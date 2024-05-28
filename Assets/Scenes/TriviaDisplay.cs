@@ -72,6 +72,7 @@ public class TriviaDisplay : MonoBehaviour
         t2.text = question.Answer2;
         t3.text = question.Answer3;
         t4.text = question.Answer4;
+        Debug.Log("Skibidi toilet");
     }
 
     // Call this method when the button is clicked to reveal the answer
