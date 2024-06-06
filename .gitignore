@@ -1,0 +1,13 @@
+Temp/
+Library/
+Logs/
+*.app/
+.DS_Store
+*.csproj
+Assets/TextMesh Pro.meta
+Assets/TextMesh Pro/
+.vs/
+.vsconfig
+obj/
+CaseSensitiveTest
+

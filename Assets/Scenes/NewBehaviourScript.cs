@@ -1,0 +1,499 @@
+﻿using UnityEngine.Networking;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+using UnityEngine.Events;
+using TMPro;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
+
+[System.Serializable]
+public class CompletionRequest
+{
+    public string model;
+    public string prompt;
+    public int max_tokens;
+}
+
+[System.Serializable]
+public class CompletionResponse
+{
+    public string id;
+    public string object_;
+    public int created;
+    public string model;
+    public Choice[] choices;
+
+    [System.Serializable]
+    public class Choice
+    {
+        public string text;
+        public int index;
+        public object logprobs;
+        public string finish_reason;
+    }
+}
+
+[System.Serializable]
+public class ResponseData
+{
+    public string generated_text;
+}
+
+[System.Serializable]
+public class ResponseArrayWrapper
+{
+    public ResponseData[] responses;
+}
+
+
+public class NewBehaviourScript : MonoBehaviour
+{
+    public bool ishooting = false;
+    public TMP tp;
+    public Vector2[,] tm;
+    public Cell[,] k;
+    public string[,] caveList;
+    public int i = 0;
+    public int j = 0;
+    public Canvas c;
+    public Cell player;
+    public bool canMove = true;
+    public bool isShooting = false;
+    public int numArrows = 3;
+    public int coins = 0;
+    public int coinsleft = 100;
+    public int score = 0;
+    public int numTurns = 0;
+    public int wumpusDead = 0;
+    public bool wumpusRoom = false;
+
+    public GameData gd;
+
+    public InputField ifield;
+
+    public TextMeshProUGUI n1;
+
+    public TextMeshProUGUI t1;
+
+    public TextMeshProUGUI t2;
+
+    public TextMeshProUGUI t3;
+
+    public TextMeshProUGUI t4;
+
+    string playerName = "Player";
+
+    private static readonly HttpClient httpClient = new HttpClient();
+
+    public bool pitRoom = false;
+
+    public bool batRoom = false;
+
+    public GameObject BatPrefab;
+
+    public System.Random rnd = new System.Random();
+
+    public SpriteRenderer sr;
+
+    void Start()
+    {
+        BatPrefab.SetActive(false);
+        tm = tp.allPositions;
+        caveList = tp.locToCave;
+        k = tp.kids;
+        player = k[0, 0];
+        ifield.text = SystemInfo.deviceName;
+    }
+
+    void CorrectAnswer(string usage)
+    {
+        playerName = ifield.text;
+        if (usage == "arrow")
+        {
+            numArrows += 2;
+        }
+        if (usage == "secret")
+        {
+            if (rnd.Next(2) == 0)
+            {
+                StartCoroutine(CallOpenAI());
+            }
+            else
+            {
+                int randomoption = rnd.Next(3);
+                if (randomoption == 0)
+                {
+                    n1.text = "Wumpus is at room " + tp.wumpus.GetCellIndex(); 
+                }
+                else if (randomoption == 1)
+                {
+                    int index = rnd.Next(2);
+                    n1.text = "Pit is at room " + tp.pits[index].GetCellIndex();
+                }
+                else
+                {
+                    int index = rnd.Next(2);
+                    n1.text = "Bats are at room " + tp.bats[index].GetCellIndex();
+                }
+            }
+        }
+        if (usage == "wumpus")
+        {
+            wumpusRoom = true;
+            tp.moveWumpus();
+        }
+        if (usage == "pit")
+        {
+            pitRoom = true;
+            tp.SetHazards();
+        }
+        tp.makeAppear();
+        sr.enabled = true;
+        c.gameObject.SetActive(true);
+        canMove = true;
+    }
+
+
+    private IEnumerator CallOpenAI()
+    {
+        string apiKey = "REDACTED-OPENAI-KEY"; // Replace with your OpenAI API key
+        string url = "https://api.openai.com/v1/chat/completions";
+
+        // Create the JSON request payload
+        string jsonContent = "{\"model\": \"gpt-3.5-turbo\", \"messages\": [{\"role\": \"user\", \"content\": \"Give me a random fact.\"}], \"max_tokens\": 50}";
+
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonContent);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", $"Bearer {apiKey}");
+
+            Debug.Log("Sending request to OpenAI API...");
+            Debug.Log("Request URL: " + url);
+            Debug.Log("Request JSON: " + jsonContent);
+
+            yield return request.SendWebRequest();
+
+            if (request.isNetworkError || request.isHttpError)
+            {
+                Debug.LogError($"Error: {request.error}");
+                Debug.LogError($"Response Code: {request.responseCode}");
+                Debug.LogError($"Response: {request.downloadHandler.text}");
+            }
+            else
+            {
+                string responseContent = request.downloadHandler.text;
+                Debug.Log("Received response from OpenAI API");
+                Debug.Log("Response: " + responseContent);
+
+                // Parse the JSON response manually
+                string generatedText = ExtractGeneratedText(responseContent);
+                if (!string.IsNullOrEmpty(generatedText))
+                {
+                    Debug.Log("Response text: " + generatedText);
+                    n1.text = generatedText;
+                }
+                else
+                {
+                    Debug.LogWarning("No text found in the response.");
+                }
+            }
+        }
+    }
+
+    private string ExtractGeneratedText(string jsonResponse)
+    {
+        string pattern = "\"content\": \"(.*?)\"";
+        var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, pattern);
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+        return null;
+    }
+
+    void payCoin()
+    {
+        coins--;
+    }
+
+    void WrongAnswer(string usage)
+    {
+        if (usage == "wumpus")
+        {
+            gd.AddOrUpdatePlayerData(playerName, score, numTurns, coins, numArrows, false, "Died to the wumpus. Wump wump...");
+            SceneManager.LoadScene("Lose");
+        }
+        if (usage == "pit")
+        {
+            gd.AddOrUpdatePlayerData(playerName, score, numTurns, coins, numArrows, false, "Had a great fall, just like Humpty Dumpty!");
+            SceneManager.LoadScene("Lose");
+        }
+        tp.makeAppear();
+        sr.enabled = true;
+        c.gameObject.SetActive(true);
+        canMove = true;
+    }
+
+    void updateScores()
+    {
+        playerName = ifield.text;
+        if (player.isNearBats())
+        {
+            n1.text = "Bats nearby?";
+        }
+        else if (player.isNearWumpus())
+        {
+            n1.text = "I smell a wumpus!";
+        }
+        else if (player.isNearPits())
+        {
+            n1.text = "I feel a breeze...";
+        }
+        if (numArrows <= 0 || coins < 0)
+        {
+            gd.AddOrUpdatePlayerData(playerName, score, numTurns, coins, numArrows, false, "Went broke :(");
+            SceneManager.LoadScene("Lose");
+        }
+        score = 100 - numTurns + coins + 5 * numArrows + 50 * wumpusDead;
+        t1.text = "Scores: " + score;
+        t2.text = "Coins: " + coins;
+        t3.text = "Arrows: " + numArrows;
+        t4.text = "Turns: " + numTurns; 
+    }
+
+    void buyArrows()
+    {
+        if (canMove)
+        {
+            c.gameObject.SetActive(false);
+            tp.makeDisappear();
+            sr.enabled = false;
+            canMove = false;
+            SceneManager.LoadScene("Cave_01", LoadSceneMode.Additive);
+            SceneManager.SetActiveScene(SceneManager.GetSceneByName("Cave_01"));
+        }
+    }
+
+    void buySecret()
+    {
+        if (canMove)
+        {
+            c.gameObject.SetActive(false);
+            tp.makeDisappear();
+            sr.enabled = false;
+            canMove = false;
+            SceneManager.LoadScene("Cave_02", LoadSceneMode.Additive);
+            SceneManager.SetActiveScene(SceneManager.GetSceneByName("Cave_02"));
+        }
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        transform.position = player.gameObject.transform.position;
+        if (SceneManager.sceneCount == 1 && !isShooting && ishooting)
+        {
+            canMove = true;
+            c.gameObject.SetActive(true);
+            tp.makeAppear();
+            sr.enabled = true;
+        }
+        updateScores();
+        if (canMove) {
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                isShooting = true;
+                canMove = false;
+            }
+            else if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                player.hasPlayer = false;
+                if (Input.GetKey(KeyCode.RightArrow))
+                {
+                    player = player.neighbors["upright"];
+                }
+                else if (Input.GetKey(KeyCode.LeftArrow))
+                {
+                    player = player.neighbors["upleft"];
+                }
+                else
+                {
+                    player = player.neighbors["up"];
+                }
+                player.hasPlayer = true;
+                numTurns++;
+                if (coinsleft > 0)
+                {
+                    coins++;
+                }
+                coinsleft--;
+                wumpusRoom = false;
+                batRoom = false;
+                pitRoom = false;
+                StartCoroutine(CallOpenAI());
+            }
+            else if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                player.hasPlayer = false;
+                if (Input.GetKey(KeyCode.RightArrow))
+                {
+                    player = player.neighbors["downright"];
+                }
+                else if (Input.GetKey(KeyCode.LeftArrow))
+                {
+                    player = player.neighbors["downleft"];
+                }
+                else
+                {
+                    player = player.neighbors["down"];
+                }
+                player.hasPlayer = true;
+                numTurns++;
+                if (coinsleft > 0)
+                {
+                    coins++;
+                }
+                coinsleft--;
+                wumpusRoom = false;
+                batRoom = false;
+                pitRoom = false;
+                StartCoroutine(CallOpenAI());
+            }
+            if (player.hasWumpus && !wumpusRoom)
+            {
+                c.gameObject.SetActive(false);
+                tp.makeDisappear();
+                sr.enabled = false;
+                canMove = false;
+                SceneManager.LoadScene("wumpusRoom", LoadSceneMode.Additive);
+                SceneManager.SetActiveScene(SceneManager.GetSceneByName("wumpusRoom"));
+                wumpusRoom = true;
+            }
+            if (player.hasBat && !batRoom)
+            {
+                batRoom = true;
+                StartCoroutine(ShootBat());
+            }
+            if (player.hasPit && !pitRoom)
+            {
+                c.gameObject.SetActive(false);
+                sr.enabled = false;
+                tp.makeDisappear();
+                canMove = false;
+                SceneManager.LoadScene("Cave_03", LoadSceneMode.Additive);
+                SceneManager.SetActiveScene(SceneManager.GetSceneByName("Cave_03"));
+                pitRoom = true;
+            }
+        }
+        else if (isShooting)
+        {
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                tp.makeAppear();
+                sr.enabled = true;
+                c.gameObject.SetActive(true);
+                isShooting = false;
+                canMove = true;
+            }
+            else
+            {
+                shootArrow();
+            }
+            
+        }
+    }
+
+    private IEnumerator ShootBat()
+    {
+        ishooting = true;
+        Debug.Log("BAT");
+        BatPrefab.SetActive(true);
+        canMove = false;
+
+        yield return new WaitForSeconds(1.075f);
+
+        BatPrefab.SetActive(false);
+        ishooting = false;
+        canMove = true;
+        player.hasPlayer = false;
+        player = k[rnd.Next(6), rnd.Next(5)];
+        player.hasPlayer = true;
+        tp.SetHazards();
+    }
+
+    void shootArrow()
+    {
+        Cell arrow = player;
+        
+        Cell oldpos = arrow;
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            if (Input.GetKey(KeyCode.RightArrow))
+            {
+                arrow = arrow.next["upright"];
+            }
+            else if (Input.GetKey(KeyCode.LeftArrow))
+            {
+                arrow = arrow.next["upleft"];
+            }
+            else
+            {
+                arrow = arrow.next["up"];
+            }
+        }
+        else if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            if (Input.GetKey(KeyCode.RightArrow))
+            {
+                arrow = arrow.next["downright"];
+            }
+            else if (Input.GetKey(KeyCode.LeftArrow))
+            {
+                arrow = arrow.next["downleft"];
+            }
+            else
+            {
+                arrow = arrow.next["down"];
+            }
+        }
+        if (arrow != oldpos)
+        {
+            StartCoroutine(ShootArrow(arrow));
+        }
+        
+    }
+
+    private IEnumerator ShootArrow(Cell arrow)
+    {
+        arrow.hasArrow = true;
+        yield return new WaitForSeconds(1.075f);
+        
+        if (arrow.hasWumpus)
+        {
+            UnityEngine.Debug.Log("You win!");
+            wumpusDead = 1;
+            score += 50;
+            gd.AddOrUpdatePlayerData(playerName, score, numTurns, coins, numArrows, true, "Beat the wumpus!");
+            SceneManager.LoadScene("Win");
+        }
+        arrow.hasArrow = false;
+        numArrows--;
+        isShooting = false;
+        canMove = true;
+        tp.makeAppear();
+        sr.enabled = true;
+        c.gameObject.SetActive(true);
+        if (rnd.Next(3) == 2)
+        {
+            tp.moveWumpusAdj();
+        }
+    }
+}
