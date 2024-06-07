@@ -21,8 +21,6 @@ public class TriviaDisplay : MonoBehaviour
 {
     public TextMeshProUGUI questionText;
     public TextMeshProUGUI answerText;
-    public TriviaGenerator triviaGenerator;
-    public TriviaQuestion question;
     public ToggleGroup choice;
     public Text t1;
     public Text t2;
@@ -158,11 +156,11 @@ public class TriviaDisplay : MonoBehaviour
         var component = FindObjectInScene("MainScene", "sprite");
         if (isWin)
         {
-            component.GetComponent<NewBehaviourScript>().SendMessage("CorrectAnswer", usage);
+            component.GetComponent<PlayerScript>().SendMessage("CorrectAnswer", usage);
         }
         else
         {
-            component.GetComponent<NewBehaviourScript>().SendMessage("WrongAnswer", usage);
+            component.GetComponent<PlayerScript>().SendMessage("WrongAnswer", usage);
         }
         var scene = SceneManager.GetSceneByName(cavename);
         if (scene != null)
@@ -354,7 +352,7 @@ public class TriviaDisplay : MonoBehaviour
                     var component = FindObjectInScene("MainScene", "sprite");
                     if (component != null)
                     {
-                        component.GetComponent<NewBehaviourScript>().SendMessage("CorrectAnswer", usage);
+                        component.GetComponent<PlayerScript>().SendMessage("CorrectAnswer", usage);
                     }
                     var scene = SceneManager.GetSceneByName(cavename);
                     if (scene != null)
@@ -374,7 +372,7 @@ public class TriviaDisplay : MonoBehaviour
                     var component = FindObjectInScene("MainScene", "sprite");
                     if (component != null)
                     {
-                        component.GetComponent<NewBehaviourScript>().SendMessage("WrongAnswer", usage);
+                        component.GetComponent<PlayerScript>().SendMessage("WrongAnswer", usage);
                     }
                     var scene = SceneManager.GetSceneByName(cavename);
                     if (scene != null)
@@ -435,7 +433,7 @@ public class TriviaDisplay : MonoBehaviour
             var component = FindObjectInScene("MainScene", "sprite");
             if (component)
             {
-                component.GetComponent<NewBehaviourScript>().SendMessage("payCoin");
+                component.GetComponent<PlayerScript>().SendMessage("payCoin");
             }
 
         }

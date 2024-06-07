@@ -32,7 +32,7 @@ public class Cell : MonoBehaviour
     // Calculate the cell index based on row and column number
     public int GetCellIndex()
     {
-        return TMP.gridWidth * j + i + 1;
+        return CellGenerator.gridWidth * j + i + 1;
     }
 
     public bool isNearWumpus()

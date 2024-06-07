@@ -2,7 +2,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-public class TMP : MonoBehaviour
+public class CellGenerator : MonoBehaviour
 {
 
     public GameObject hexPrefab;
