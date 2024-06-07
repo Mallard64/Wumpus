@@ -1518,6 +1518,7 @@ MonoBehaviour:
   toggle3: {fileID: 5659130914393639032}
   toggle4: {fileID: 4368154690128205773}
   cavename: 
+  textComponent: {fileID: 0}
   isTimed: 0
   timedtime: 2
   questions: 0

@@ -24,6 +24,9 @@ EditorBuildSettings:
     path: Assets/Scenes/Win.unity
     guid: cd424feab4ded4bca95a66dddce4f098
   - enabled: 1
+    path: Assets/Scenes/BeginningScene.unity
+    guid: 74d62445c6d2d4aa780ed977419e7b44
+  - enabled: 1
     path: Assets/Scenes/Lose.unity
     guid: baeb6ae70db094cc1a449308f3607611
   - enabled: 1

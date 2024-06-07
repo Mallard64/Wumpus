@@ -28,6 +28,8 @@ public class TriviaDisplay : MonoBehaviour
     public Toggle toggle4;
     public string cavename;
 
+    public Text textComponent;
+
     public bool isTimed = false;
 
     public float timedtime = 2.0f;
@@ -48,6 +50,118 @@ public class TriviaDisplay : MonoBehaviour
     public System.Random rnd = new System.Random();
 
     private static readonly HttpClient httpClient = new HttpClient();
+
+    private IEnumerator CallOpenAI_WumpusChat(string prompt)
+    {
+        string apiKey = "REDACTED-OPENAI-KEY"; // Replace with your OpenAI API key
+        string url = "https://api.openai.com/v1/chat/completions";
+
+        // Create the JSON request payload
+        string jsonContent = "{\"model\": \"gpt-3.5-turbo\", \"messages\": [{\"role\": \"user\", \"content\": \"" + prompt + "Don't include any quotes." + "\"}], \"max_tokens\": 50}";
+
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonContent);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", $"Bearer {apiKey}");
+
+            Debug.Log("Sending request to OpenAI API...");
+            Debug.Log("Request URL: " + url);
+            Debug.Log("Request JSON: " + jsonContent);
+
+            yield return request.SendWebRequest();
+
+            if (request.isNetworkError || request.isHttpError)
+            {
+                Debug.LogError($"Error: {request.error}");
+                Debug.LogError($"Response Code: {request.responseCode}");
+                Debug.LogError($"Response: {request.downloadHandler.text}");
+            }
+            else
+            {
+                string responseContent = request.downloadHandler.text;
+                Debug.Log("Received response from OpenAI API");
+                Debug.Log("Response: " + responseContent);
+
+                // Parse the JSON response manually
+                string generatedText = ExtractMessage(responseContent);
+                if (!string.IsNullOrEmpty(generatedText))
+                {
+                    Debug.Log("Response text: " + generatedText);
+                    textComponent.text = generatedText;
+                }
+                else
+                {
+                    Debug.LogWarning("No text found in the response.");
+                }
+            }
+        }
+    }
+
+    private IEnumerator CallOpenAI_WumpusChatFinal(string prompt, bool isWin)
+    {
+        string apiKey = "REDACTED-OPENAI-KEY"; // Replace with your OpenAI API key
+        string url = "https://api.openai.com/v1/chat/completions";
+
+        // Create the JSON request payload
+        string jsonContent = "{\"model\": \"gpt-3.5-turbo\", \"messages\": [{\"role\": \"user\", \"content\": \"" + prompt + "Don't include any quotes." + "\"}], \"max_tokens\": 50}";
+
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonContent);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", $"Bearer {apiKey}");
+
+            Debug.Log("Sending request to OpenAI API...");
+            Debug.Log("Request URL: " + url);
+            Debug.Log("Request JSON: " + jsonContent);
+
+            yield return request.SendWebRequest();
+
+            if (request.isNetworkError || request.isHttpError)
+            {
+                Debug.LogError($"Error: {request.error}");
+                Debug.LogError($"Response Code: {request.responseCode}");
+                Debug.LogError($"Response: {request.downloadHandler.text}");
+            }
+            else
+            {
+                string responseContent = request.downloadHandler.text;
+                Debug.Log("Received response from OpenAI API");
+                Debug.Log("Response: " + responseContent);
+
+                // Parse the JSON response manually
+                string generatedText = ExtractMessage(responseContent);
+                if (!string.IsNullOrEmpty(generatedText))
+                {
+                    Debug.Log("Response text: " + generatedText);
+                    textComponent.text = generatedText;
+                }
+                else
+                {
+                    Debug.LogWarning("No text found in the response.");
+                }
+            }
+        }
+        var component = FindObjectInScene("MainScene", "sprite");
+        if (isWin)
+        {
+            component.GetComponent<NewBehaviourScript>().SendMessage("CorrectAnswer", usage);
+        }
+        else
+        {
+            component.GetComponent<NewBehaviourScript>().SendMessage("WrongAnswer", usage);
+        }
+        var scene = SceneManager.GetSceneByName(cavename);
+        if (scene != null)
+        {
+            SceneManager.UnloadSceneAsync(scene);
+        }
+    }
 
     private IEnumerator CallOpenAI_Question()
     {
@@ -188,7 +302,16 @@ public class TriviaDisplay : MonoBehaviour
         return null;
     }
 
-
+    public static string ExtractMessage(string jsonResponse)
+    {
+        string pattern = "\"content\": \"(.*?)\"";
+        var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, pattern);
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+        return null;
+    }
 
     private GameObject FindObjectInScene(string sceneName, string objectName)
     {
@@ -208,6 +331,11 @@ public class TriviaDisplay : MonoBehaviour
 
     void Start()
     {
+        //check if wumpus room
+        if (questions == 5)
+        {
+            StartCoroutine(CallOpenAI_WumpusChat("Imagine you are the wumpus and the player has came to hunt you. What do you say?"));
+        }
         toggle1.onValueChanged.AddListener(TaskOnClick1);
         toggle2.onValueChanged.AddListener(TaskOnClick2);
         toggle3.onValueChanged.AddListener(TaskOnClick3);
@@ -223,28 +351,43 @@ public class TriviaDisplay : MonoBehaviour
         if (timedtime <= 0.0f) {
             if (right > questions / 2)
             {
-                var component = FindObjectInScene("MainScene", "sprite");
-                if (component != null)
+
+                if (questions == 5)
                 {
-                    component.GetComponent<NewBehaviourScript>().SendMessage("CorrectAnswer", usage);
+                    StartCoroutine(CallOpenAI_WumpusChatFinal("Imagine you are the wumpus and the player just defeated you, but you can run away. What do you say?", true));
                 }
-                var scene = SceneManager.GetSceneByName(cavename);
-                if (scene != null)
+                else
                 {
-                    SceneManager.UnloadSceneAsync(scene);
+                    var component = FindObjectInScene("MainScene", "sprite");
+                    if (component != null)
+                    {
+                        component.GetComponent<NewBehaviourScript>().SendMessage("CorrectAnswer", usage);
+                    }
+                    var scene = SceneManager.GetSceneByName(cavename);
+                    if (scene != null)
+                    {
+                        SceneManager.UnloadSceneAsync(scene);
+                    }
                 }
             }
             else if (count >= questions)
             {
-                var component = FindObjectInScene("MainScene", "sprite");
-                if (component != null)
+                if (questions == 5)
                 {
-                    component.GetComponent<NewBehaviourScript>().SendMessage("WrongAnswer", usage);
+                    StartCoroutine(CallOpenAI_WumpusChatFinal("Imagine you are the wumpus and you are about to kill the pesky hunter who tried to kill you. What do you say?", false));
                 }
-                var scene = SceneManager.GetSceneByName(cavename);
-                if (scene != null)
+                else
                 {
-                    SceneManager.UnloadSceneAsync(scene);
+                    var component = FindObjectInScene("MainScene", "sprite");
+                    if (component != null)
+                    {
+                        component.GetComponent<NewBehaviourScript>().SendMessage("WrongAnswer", usage);
+                    }
+                    var scene = SceneManager.GetSceneByName(cavename);
+                    if (scene != null)
+                    {
+                        SceneManager.UnloadSceneAsync(scene);
+                    }
                 }
             }
             else
@@ -280,11 +423,20 @@ public class TriviaDisplay : MonoBehaviour
             answerText.text = correctans;
             if (correctans.Substring(2,correctans.Length-2) == ans.Substring(2,ans.Length-2))
             {
+                if (questions == 5)
+                {
+                    StartCoroutine(CallOpenAI_WumpusChat("Imagine you are the wumpus and the player has landed a hit on you. What do you say?"));
+                }
+                
                 right++;
                 answerText.color = Color.green;
             }
             else
             {
+                if (questions == 5)
+                {
+                    StartCoroutine(CallOpenAI_WumpusChat("Imagine you are the wumpus and you landed a blow on the the pesky hunter trying to kill you. What do you say?"));
+                }
                 answerText.color = Color.red;
             }
             var component = FindObjectInScene("MainScene", "sprite");
