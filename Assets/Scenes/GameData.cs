@@ -3,6 +3,9 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 
+// GameData loads and saves the leaderboard scores
+// The scores are saved to a json file on the local machine
+// The default player name is read from the machine name
 public class GameData : MonoBehaviour
 {
     public static GameData instance;

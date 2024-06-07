@@ -2,6 +2,7 @@
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
+// Script to replay the game after it ends
 public class LoadMainScene : MonoBehaviour
 {
     public Button yourButton; // Drag your button here in the Inspector

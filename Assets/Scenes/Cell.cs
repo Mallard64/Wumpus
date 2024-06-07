@@ -8,6 +8,9 @@ using UnityEngine.UI;
 using UnityEngine.Events;
 using TMPro;
 
+// Cell represents one room in the game
+// Each cell maintains its own status such as whether there is wumpus or player
+// Cell changes colors based on what it has
 public class Cell : MonoBehaviour
 {
     public bool hasPlayer = false;
@@ -26,6 +29,7 @@ public class Cell : MonoBehaviour
         GetComponentInChildren<Text>().text = GetCellIndex().ToString();
     }
 
+    // Calculate the cell index based on row and column number
     public int GetCellIndex()
     {
         return TMP.gridWidth * j + i + 1;
@@ -51,6 +55,7 @@ public class Cell : MonoBehaviour
     void Update()
     {
         var renderer = gameObject.GetComponent<SpriteRenderer>();
+        // Change color based on the status
         if (hasArrow)
         {
             if (hasWumpus)

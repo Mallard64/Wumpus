@@ -11,6 +11,12 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 
+
+// Displays an AI-generated multiple-choice trivia question and four possible answers
+// Validates the answer
+// Keeps a tally of total correct answers
+// Notifies the player of the overall result
+// Generates lines for the wumpus based on the result
 public class TriviaDisplay : MonoBehaviour
 {
     public TextMeshProUGUI questionText;
@@ -51,6 +57,7 @@ public class TriviaDisplay : MonoBehaviour
 
     private static readonly HttpClient httpClient = new HttpClient();
 
+    // Calls OpenAI based on a given prompt
     private IEnumerator CallOpenAI_WumpusChat(string prompt)
     {
         string apiKey = "REDACTED-OPENAI-KEY"; // Replace with your OpenAI API key
@@ -100,6 +107,7 @@ public class TriviaDisplay : MonoBehaviour
         }
     }
 
+    // Calls OpenAI, notifies the player of the result, and ends the trivia minigame
     private IEnumerator CallOpenAI_WumpusChatFinal(string prompt, bool isWin)
     {
         string apiKey = "REDACTED-OPENAI-KEY"; // Replace with your OpenAI API key
@@ -163,6 +171,7 @@ public class TriviaDisplay : MonoBehaviour
         }
     }
 
+    // Generates a question using OpenAI
     private IEnumerator CallOpenAI_Question()
     {
         Dictionary<int, Text> p = new Dictionary<int, Text>();
@@ -222,7 +231,6 @@ public class TriviaDisplay : MonoBehaviour
                     p[2].text = "C: " + answerC;
                     p[3].text = "D: " + answerD;
 
-                    // Shuffle answers to ensure the correct answer is not always in the same place
                     List<int> keys = new List<int>(p.Keys);
                     for (int i = 0; i < keys.Count; i++)
                     {
@@ -231,21 +239,6 @@ public class TriviaDisplay : MonoBehaviour
                         keys[i] = keys[j];
                         keys[j] = temp;
                     }
-
-                    //Dictionary<int, Text> shuffledAnswers = new Dictionary<int, Text>();
-                    //for (int i = 0; i < keys.Count; i++)
-                    //{
-                    //    shuffledAnswers[i] = p[keys[i]];
-                    //}
-
-                    //// Assign shuffled answers back to UI elements
-                    //for (int i = 0; i < shuffledAnswers.Count; i++)
-                    //{
-                    //    p[i].text = shuffledAnswers[i].text;
-                    //}
-
-                    //// Determine the correct answer's new index
-                    //correctans = shuffledAnswers[keys.IndexOf(0)].text;
                 }
                 else
                 {
@@ -448,6 +441,7 @@ public class TriviaDisplay : MonoBehaviour
         }
     }
 
+    // Validates the answers when user chooses an option
     void TaskOnClick1(bool isOn) {
         if (isOn)
         {

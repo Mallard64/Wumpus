@@ -11,12 +11,16 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
+// Creates a Star Wars-like scrolling text
+// Calls the OpenAI web API to generate a backstory about Hunt the Wumpus
+// Makes the text slowly move upwards
 public class TextCrawl : MonoBehaviour
 {
     public float scrollSpeed = 20000f;
     public Text textComponent;
     public RectTransform textRectTransform;
 
+    // Calls OpenAI to create a backstory using ChatGPT
     private IEnumerator CallOpenAI()
     {
         string apiKey = "REDACTED-OPENAI-KEY"; // Replace with your OpenAI API key
@@ -66,6 +70,7 @@ public class TextCrawl : MonoBehaviour
         }
     }
 
+    // Parses response
     private string ExtractGeneratedText(string jsonResponse)
     {
         string pattern = "\"content\": \"(.*?)\"";

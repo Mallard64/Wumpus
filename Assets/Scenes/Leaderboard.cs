@@ -3,6 +3,8 @@ using UnityEngine.UI;
 using System.IO;
 using System.Collections.Generic;
 
+// Show the list of (player, scores) sorted by the highest score
+// In addition to the score, it also shows turns / coins / arrows
 public class Leaderboard : MonoBehaviour
 {
     public Vector3 leaderboardContainer = new Vector3(0,-50,0);
