@@ -164,6 +164,13 @@ public class PlayerScript : MonoBehaviour
         canMove = true;
     }
 
+    private void revealInTestMode()
+    {
+        n1.text = "Wumpus: " + tp.wumpus.GetCellIndex()
+            + " Pit: " + tp.pits[0].GetCellIndex() + " " + tp.pits[1].GetCellIndex()
+            + " Bats: " + tp.bats[0].GetCellIndex() + " " + tp.bats[1].GetCellIndex();
+    }
+
     // Generate a trivia through ChatGPT by calling OpenAI web APIs
     private IEnumerator CallOpenAI()
     {
@@ -417,6 +424,15 @@ public class PlayerScript : MonoBehaviour
                 shootArrow();
             }
             
+        }
+        if (Input.GetKeyDown(KeyCode.W))
+        {
+            if (Input.GetKey(KeyCode.U))
+            {
+                // Enter test mode when both W and U keys are pressed
+                Debug.Log("Entering test mode");
+                revealInTestMode();
+            }
         }
     }
 
