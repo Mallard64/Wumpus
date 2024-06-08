@@ -34,14 +34,14 @@ public class Leaderboard : MonoBehaviour
             {
                 Debug.Log(player.playerName);
                 GameObject entry = Instantiate(leaderboardEntryPrefab, leaderboardContainer, Quaternion.identity);
-                
+
                 Text[] texts = entry.GetComponentsInChildren<Text>();
                 texts[0].text = player.playerName;
-                texts[0].transform.position = new Vector3(texts[0].transform.position.x, texts[0].transform.position.y-100-inc, texts[0].transform.position.z);
+                texts[0].transform.position = new Vector3(texts[0].transform.position.x, texts[0].transform.position.y - 100 - inc, texts[0].transform.position.z);
                 texts[1].text = player.score.ToString();
-                texts[1].transform.position = new Vector3(texts[1].transform.position.x, texts[1].transform.position.y - 100-inc, texts[1].transform.position.z);
+                texts[1].transform.position = new Vector3(texts[1].transform.position.x, texts[1].transform.position.y - 100 - inc, texts[1].transform.position.z);
                 texts[2].text = player.deaths.ToString();
-                texts[2].transform.position = new Vector3(texts[2].transform.position.x, texts[2].transform.position.y - 100-inc, texts[2].transform.position.z);
+                texts[2].transform.position = new Vector3(texts[2].transform.position.x, texts[2].transform.position.y - 100 - inc, texts[2].transform.position.z);
                 texts[3].text = "Turns: " + player.turns.ToString();
                 texts[3].transform.position = new Vector3(texts[3].transform.position.x, texts[3].transform.position.y - 100 - inc, texts[3].transform.position.z);
                 texts[4].text = "Coins: " + player.coins.ToString();

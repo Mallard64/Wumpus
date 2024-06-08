@@ -221,7 +221,7 @@ public class PlayerScript : MonoBehaviour
         var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, pattern);
         if (match.Success)
         {
-            return match.Groups[1].Value;
+            return Regex.Replace(match.Groups[1].Value, @"[\\\/]", "");
         }
         return null;
     }

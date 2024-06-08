@@ -256,12 +256,12 @@ public class TriviaDisplay : MonoBehaviour
         var match = Regex.Match(jsonResponse, pattern);
         if (match.Success)
         {
-            question = match.Groups[1].Value;
-            answerA = match.Groups[2].Value;
-            answerB = match.Groups[3].Value;
-            answerC = match.Groups[4].Value;
-            answerD = match.Groups[5].Value;
-            correctAnswer = match.Groups[6].Value;
+            question = cleanText(match.Groups[1].Value);
+            answerA = cleanText(match.Groups[2].Value);
+            answerB = cleanText(match.Groups[3].Value);
+            answerC = cleanText(match.Groups[4].Value);
+            answerD = cleanText(match.Groups[5].Value);
+            correctAnswer = cleanText(match.Groups[6].Value);
         }
     }
 
@@ -281,6 +281,10 @@ public class TriviaDisplay : MonoBehaviour
         return -1; // No correct answer found
     }
 
+    private static string cleanText(string text)
+    {
+        return Regex.Replace(text, @"[\\\/]", "");
+    }
 
     private string ExtractGeneratedText(string jsonResponse)
     {
@@ -288,7 +292,7 @@ public class TriviaDisplay : MonoBehaviour
         var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, pattern);
         if (match.Success)
         {
-            return match.Groups[1].Value;
+            return cleanText(match.Groups[1].Value);
         }
         return null;
     }
@@ -299,7 +303,7 @@ public class TriviaDisplay : MonoBehaviour
         var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, pattern);
         if (match.Success)
         {
-            return match.Groups[1].Value;
+            return cleanText(match.Groups[1].Value);
         }
         return null;
     }
