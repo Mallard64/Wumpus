@@ -43,7 +43,7 @@ public class TextCrawl : MonoBehaviour
 
             yield return request.SendWebRequest();
 
-            if (request.isNetworkError || request.isHttpError)
+            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
             {
                 Debug.LogError($"Error: {request.error}");
                 Debug.LogError($"Response Code: {request.responseCode}");

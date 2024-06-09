@@ -74,6 +74,8 @@ public class PlayerScript : MonoBehaviour
     public int numTurns = 0;
     public int wumpusDead = 0;
     public bool wumpusRoom = false;
+    public Button arrowButton;
+    public Button secretButton;
 
     public GameData gd;
 
@@ -103,8 +105,13 @@ public class PlayerScript : MonoBehaviour
 
     public SpriteRenderer sr;
 
+    private Vector2 touchStartPosition;
+    private float touchStartTime;
+
     void Start()
     {
+        arrowButton.onClick.AddListener(buyArrows);
+        secretButton.onClick.AddListener(buySecret);
         BatPrefab.SetActive(false);
         tm = tp.allPositions;
         caveList = tp.locToCave;
@@ -194,7 +201,7 @@ public class PlayerScript : MonoBehaviour
 
             yield return request.SendWebRequest();
 
-            if (request.isNetworkError || request.isHttpError)
+            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
             {
                 Debug.LogError($"Error: {request.error}");
                 Debug.LogError($"Response Code: {request.responseCode}");
@@ -323,65 +330,126 @@ public class PlayerScript : MonoBehaviour
         }
         updateScores();
         if (canMove) {
-            // Moves the player or action based on the arrow / space keys
-            if (Input.GetKeyDown(KeyCode.Space))
+            if (Input.touchCount > 0)
             {
-                isShooting = true;
-                canMove = false;
+                var theTouch = Input.GetTouch(0);
+                if (theTouch.phase == TouchPhase.Began)
+                {
+                    var current = Time.time;
+                    touchStartPosition = theTouch.position;
+                    if (current - touchStartTime < 1f)
+                    {
+                        // Double tap to enter shooting mode
+                        isShooting = true;
+                        canMove = false;
+                    }
+                    touchStartTime = current;
+                }
+                else if (theTouch.phase == TouchPhase.Ended)
+                {
+                    var touchEndPosition = theTouch.position;
+                    var rad = Mathf.Atan2(touchEndPosition.y - touchStartPosition.y, touchEndPosition.x - touchStartPosition.x);
+                    var degree = rad * 180 / Mathf.PI;
+                    player.hasPlayer = false;
+                    if (degree >= 0 && degree <= 60)
+                    {
+                        player = player.neighbors["upright"];
+                    }
+                    else if (degree > 60 && degree < 120)
+                    {
+                        player = player.neighbors["up"];
+                    }
+                    else if (degree >= 120 && degree < 180)
+                    {
+                        player = player.neighbors["upleft"];
+                    }
+                    else if (degree >= -180 && degree <= -120)
+                    {
+                        player = player.neighbors["downleft"];
+                    }
+                    else if (degree > -120 && degree < -60)
+                    {
+                        player = player.neighbors["down"];
+                    }
+                    else
+                    {
+                        player = player.neighbors["downright"];
+                    }
+                    player.hasPlayer = true;
+                    numTurns++;
+                    if (coinsleft > 0)
+                    {
+                        coins++;
+                    }
+                    coinsleft--;
+                    wumpusRoom = false;
+                    batRoom = false;
+                    pitRoom = false;
+                    StartCoroutine(CallOpenAI());
+                }
             }
-            else if (Input.GetKeyDown(KeyCode.UpArrow))
+            else
             {
-                player.hasPlayer = false;
-                if (Input.GetKey(KeyCode.RightArrow))
+                // Moves the player or action based on the arrow / space keys
+                if (Input.GetKeyDown(KeyCode.Space))
                 {
-                    player = player.neighbors["upright"];
+                    isShooting = true;
+                    canMove = false;
                 }
-                else if (Input.GetKey(KeyCode.LeftArrow))
+                else if (Input.GetKeyDown(KeyCode.UpArrow))
                 {
-                    player = player.neighbors["upleft"];
+                    player.hasPlayer = false;
+                    if (Input.GetKey(KeyCode.RightArrow))
+                    {
+                        player = player.neighbors["upright"];
+                    }
+                    else if (Input.GetKey(KeyCode.LeftArrow))
+                    {
+                        player = player.neighbors["upleft"];
+                    }
+                    else
+                    {
+                        player = player.neighbors["up"];
+                    }
+                    player.hasPlayer = true;
+                    numTurns++;
+                    if (coinsleft > 0)
+                    {
+                        coins++;
+                    }
+                    coinsleft--;
+                    wumpusRoom = false;
+                    batRoom = false;
+                    pitRoom = false;
+                    StartCoroutine(CallOpenAI());
                 }
-                else
+                else if (Input.GetKeyDown(KeyCode.DownArrow))
                 {
-                    player = player.neighbors["up"];
+                    player.hasPlayer = false;
+                    if (Input.GetKey(KeyCode.RightArrow))
+                    {
+                        player = player.neighbors["downright"];
+                    }
+                    else if (Input.GetKey(KeyCode.LeftArrow))
+                    {
+                        player = player.neighbors["downleft"];
+                    }
+                    else
+                    {
+                        player = player.neighbors["down"];
+                    }
+                    player.hasPlayer = true;
+                    numTurns++;
+                    if (coinsleft > 0)
+                    {
+                        coins++;
+                    }
+                    coinsleft--;
+                    wumpusRoom = false;
+                    batRoom = false;
+                    pitRoom = false;
+                    StartCoroutine(CallOpenAI());
                 }
-                player.hasPlayer = true;
-                numTurns++;
-                if (coinsleft > 0)
-                {
-                    coins++;
-                }
-                coinsleft--;
-                wumpusRoom = false;
-                batRoom = false;
-                pitRoom = false;
-                StartCoroutine(CallOpenAI());
-            }
-            else if (Input.GetKeyDown(KeyCode.DownArrow))
-            {
-                player.hasPlayer = false;
-                if (Input.GetKey(KeyCode.RightArrow))
-                {
-                    player = player.neighbors["downright"];
-                }
-                else if (Input.GetKey(KeyCode.LeftArrow))
-                {
-                    player = player.neighbors["downleft"];
-                }
-                else
-                {
-                    player = player.neighbors["down"];
-                }
-                player.hasPlayer = true;
-                numTurns++;
-                if (coinsleft > 0)
-                {
-                    coins++;
-                }
-                coinsleft--;
-                wumpusRoom = false;
-                batRoom = false;
-                pitRoom = false;
-                StartCoroutine(CallOpenAI());
             }
             if (player.hasWumpus && !wumpusRoom)
             {
@@ -411,7 +479,23 @@ public class PlayerScript : MonoBehaviour
         }
         else if (isShooting)
         {
-            if (Input.GetKeyDown(KeyCode.Space))
+            if (Input.touchCount > 0)
+            {
+                var theTouch = Input.GetTouch(0);
+                var current = Time.time;
+                touchStartPosition = theTouch.position;
+                if (current - touchStartTime < 1f)
+                {
+                    // Double tap to exit shooting mode
+                    tp.makeAppear();
+                    sr.enabled = true;
+                    c.gameObject.SetActive(true);
+                    isShooting = false;
+                    canMove = true;
+                }
+                touchStartTime = current;
+            }
+            else if (Input.GetKeyDown(KeyCode.Space))
             {
                 tp.makeAppear();
                 sr.enabled = true;
@@ -459,7 +543,47 @@ public class PlayerScript : MonoBehaviour
         Cell arrow = player;
         
         Cell oldpos = arrow;
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+
+        if (Input.touchCount > 0)
+        {
+            var theTouch = Input.GetTouch(0);
+            if (theTouch.phase == TouchPhase.Began)
+            {
+                touchStartPosition = theTouch.position;
+                touchStartTime = Time.time;
+            }
+            else if (theTouch.phase == TouchPhase.Ended)
+            {
+                var touchEndPosition = theTouch.position;
+                var rad = Mathf.Atan2(touchEndPosition.y - touchStartPosition.y, touchEndPosition.x - touchStartPosition.x);
+                var degree = rad * 180 / Mathf.PI;
+                if (degree >= 0 && degree <= 80)
+                {
+                    arrow = arrow.next["upright"];
+                }
+                else if (degree > 80 && degree < 100)
+                {
+                    arrow = arrow.next["up"];
+                }
+                else if (degree >= 100 && degree < 180)
+                {
+                    arrow = arrow.next["upleft"];
+                }
+                else if (degree >= -180 && degree <= -120)
+                {
+                    arrow = arrow.next["downleft"];
+                }
+                else if (degree > -120 && degree < -60)
+                {
+                    arrow = arrow.next["down"];
+                }
+                else
+                {
+                    arrow = arrow.next["downright"];
+                }
+            }
+        }
+        else if (Input.GetKeyDown(KeyCode.UpArrow))
         {
             if (Input.GetKey(KeyCode.RightArrow))
             {
