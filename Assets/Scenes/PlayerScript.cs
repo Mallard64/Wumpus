@@ -330,62 +330,64 @@ public class PlayerScript : MonoBehaviour
         }
         updateScores();
         if (canMove) {
+            var newPlayer = player;
             if (Input.touchCount > 0)
             {
                 var theTouch = Input.GetTouch(0);
                 if (theTouch.phase == TouchPhase.Began)
                 {
-                    var current = Time.time;
                     touchStartPosition = theTouch.position;
-                    if (current - touchStartTime < 1f)
+                    touchStartTime = Time.time;
+                }
+                else if (theTouch.phase == TouchPhase.Stationary)
+                {
+                    var current = Time.time;
+                    if (current - touchStartTime > 2f)
                     {
-                        // Double tap to enter shooting mode
-                        isShooting = true;
-                        canMove = false;
+                        if (Input.touchCount >= 3)
+                        {
+                            // Tap and hold 2 seconds with 3 fingers to enter test mode
+                            Debug.Log("Entering test mode");
+                            theTouch.tapCount = 0;
+                            revealInTestMode();
+                        }
+                        else
+                        {
+                            // Tap and hold 2 seconds to enter shooting mode
+                            isShooting = true;
+                            canMove = false;
+                        }
                     }
-                    touchStartTime = current;
                 }
                 else if (theTouch.phase == TouchPhase.Ended)
                 {
                     var touchEndPosition = theTouch.position;
                     var rad = Mathf.Atan2(touchEndPosition.y - touchStartPosition.y, touchEndPosition.x - touchStartPosition.x);
                     var degree = rad * 180 / Mathf.PI;
-                    player.hasPlayer = false;
                     if (degree >= 0 && degree <= 60)
                     {
-                        player = player.neighbors["upright"];
+                        newPlayer = player.neighbors["upright"];
                     }
                     else if (degree > 60 && degree < 120)
                     {
-                        player = player.neighbors["up"];
+                        newPlayer = player.neighbors["up"];
                     }
                     else if (degree >= 120 && degree < 180)
                     {
-                        player = player.neighbors["upleft"];
+                        newPlayer = player.neighbors["upleft"];
                     }
                     else if (degree >= -180 && degree <= -120)
                     {
-                        player = player.neighbors["downleft"];
+                        newPlayer = player.neighbors["downleft"];
                     }
                     else if (degree > -120 && degree < -60)
                     {
-                        player = player.neighbors["down"];
+                        newPlayer = player.neighbors["down"];
                     }
                     else
                     {
-                        player = player.neighbors["downright"];
+                        newPlayer = player.neighbors["downright"];
                     }
-                    player.hasPlayer = true;
-                    numTurns++;
-                    if (coinsleft > 0)
-                    {
-                        coins++;
-                    }
-                    coinsleft--;
-                    wumpusRoom = false;
-                    batRoom = false;
-                    pitRoom = false;
-                    StartCoroutine(CallOpenAI());
                 }
             }
             else
@@ -398,58 +400,52 @@ public class PlayerScript : MonoBehaviour
                 }
                 else if (Input.GetKeyDown(KeyCode.UpArrow))
                 {
-                    player.hasPlayer = false;
+
                     if (Input.GetKey(KeyCode.RightArrow))
                     {
-                        player = player.neighbors["upright"];
+                        newPlayer = player.neighbors["upright"];
                     }
                     else if (Input.GetKey(KeyCode.LeftArrow))
                     {
-                        player = player.neighbors["upleft"];
+                        newPlayer = player.neighbors["upleft"];
                     }
                     else
                     {
-                        player = player.neighbors["up"];
+                        newPlayer = player.neighbors["up"];
                     }
-                    player.hasPlayer = true;
-                    numTurns++;
-                    if (coinsleft > 0)
-                    {
-                        coins++;
-                    }
-                    coinsleft--;
-                    wumpusRoom = false;
-                    batRoom = false;
-                    pitRoom = false;
-                    StartCoroutine(CallOpenAI());
                 }
                 else if (Input.GetKeyDown(KeyCode.DownArrow))
                 {
-                    player.hasPlayer = false;
+
                     if (Input.GetKey(KeyCode.RightArrow))
                     {
-                        player = player.neighbors["downright"];
+                        newPlayer = player.neighbors["downright"];
                     }
                     else if (Input.GetKey(KeyCode.LeftArrow))
                     {
-                        player = player.neighbors["downleft"];
+                        newPlayer = player.neighbors["downleft"];
                     }
                     else
                     {
-                        player = player.neighbors["down"];
+                        newPlayer = player.neighbors["down"];
                     }
-                    player.hasPlayer = true;
-                    numTurns++;
-                    if (coinsleft > 0)
-                    {
-                        coins++;
-                    }
-                    coinsleft--;
-                    wumpusRoom = false;
-                    batRoom = false;
-                    pitRoom = false;
-                    StartCoroutine(CallOpenAI());
                 }
+            }
+            if (newPlayer != player)
+            {
+                player.hasPlayer = false;
+                newPlayer.hasPlayer = true;
+                player = newPlayer;
+                numTurns++;
+                if (coinsleft > 0)
+                {
+                    coins++;
+                }
+                coinsleft--;
+                wumpusRoom = false;
+                batRoom = false;
+                pitRoom = false;
+                StartCoroutine(CallOpenAI());
             }
             if (player.hasWumpus && !wumpusRoom)
             {
@@ -482,18 +478,21 @@ public class PlayerScript : MonoBehaviour
             if (Input.touchCount > 0)
             {
                 var theTouch = Input.GetTouch(0);
-                var current = Time.time;
-                touchStartPosition = theTouch.position;
-                if (current - touchStartTime < 1f)
+                if (theTouch.phase == TouchPhase.Stationary)
                 {
-                    // Double tap to exit shooting mode
-                    tp.makeAppear();
-                    sr.enabled = true;
-                    c.gameObject.SetActive(true);
-                    isShooting = false;
-                    canMove = true;
+                    var current = Time.time;
+                    if (current - touchStartTime > 2f)
+                    {
+
+
+                        // Tap 2 seconds again to exit shooting mode
+                        tp.makeAppear();
+                        sr.enabled = true;
+                        c.gameObject.SetActive(true);
+                        isShooting = false;
+                        canMove = true;
+                    }
                 }
-                touchStartTime = current;
             }
             else if (Input.GetKeyDown(KeyCode.Space))
             {
