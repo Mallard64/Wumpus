@@ -364,7 +364,14 @@ public class PlayerScript : MonoBehaviour
                 if (theTouch.phase == TouchPhase.Began)
                 {
                     touchStartPosition = theTouch.position;
-                    touchStartTime = Time.time;
+                    var current = Time.time;
+                    if (current - touchStartTime < 0.3f && Input.touchCount >= 3)
+                    {
+                        // Double tap with 3 fingers to enter test mode
+                        Debug.Log("Entering test mode");
+                        revealInTestMode();
+                    }
+                    touchStartTime = current;
                 }
                 else if (theTouch.phase == TouchPhase.Ended)
                 {
