@@ -76,6 +76,7 @@ public class PlayerScript : MonoBehaviour
     public bool wumpusRoom = false;
     public Button arrowButton;
     public Button secretButton;
+    public Button shootButton;
 
     public GameData gd;
 
@@ -112,6 +113,7 @@ public class PlayerScript : MonoBehaviour
     {
         arrowButton.onClick.AddListener(buyArrows);
         secretButton.onClick.AddListener(buySecret);
+        shootButton.onClick.AddListener(enterShootingMode);
         BatPrefab.SetActive(false);
         tm = tp.allPositions;
         caveList = tp.locToCave;
@@ -317,6 +319,31 @@ public class PlayerScript : MonoBehaviour
         }
     }
 
+    private IEnumerator ActivateShoot()
+    {
+        yield return new WaitForSeconds(1.075f);
+        isShooting = true;
+    }
+
+    void enterShootingMode()
+    {
+        if (isShooting == false)
+        {
+            canMove = false;
+            n1.text = "Entering shooting mode. Select a direction to shoot";
+            StartCoroutine(ActivateShoot());
+        }
+        else
+        {
+            tp.makeAppear();
+            sr.enabled = true;
+            n1.text = "Exiting shooting mode...";
+            c.gameObject.SetActive(true);
+            isShooting = false;
+            canMove = true;
+        }
+    }
+
     // Update is called once per frame
     void Update()
     {
@@ -338,26 +365,6 @@ public class PlayerScript : MonoBehaviour
                 {
                     touchStartPosition = theTouch.position;
                     touchStartTime = Time.time;
-                }
-                else if (theTouch.phase == TouchPhase.Stationary)
-                {
-                    var current = Time.time;
-                    if (current - touchStartTime > 2f)
-                    {
-                        if (Input.touchCount >= 3)
-                        {
-                            // Tap and hold 2 seconds with 3 fingers to enter test mode
-                            Debug.Log("Entering test mode");
-                            theTouch.tapCount = 0;
-                            revealInTestMode();
-                        }
-                        else
-                        {
-                            // Tap and hold 2 seconds to enter shooting mode
-                            isShooting = true;
-                            canMove = false;
-                        }
-                    }
                 }
                 else if (theTouch.phase == TouchPhase.Ended)
                 {
@@ -475,38 +482,7 @@ public class PlayerScript : MonoBehaviour
         }
         else if (isShooting)
         {
-            if (Input.touchCount > 0)
-            {
-                var theTouch = Input.GetTouch(0);
-                if (theTouch.phase == TouchPhase.Stationary)
-                {
-                    var current = Time.time;
-                    if (current - touchStartTime > 2f)
-                    {
-
-
-                        // Tap 2 seconds again to exit shooting mode
-                        tp.makeAppear();
-                        sr.enabled = true;
-                        c.gameObject.SetActive(true);
-                        isShooting = false;
-                        canMove = true;
-                    }
-                }
-            }
-            else if (Input.GetKeyDown(KeyCode.Space))
-            {
-                tp.makeAppear();
-                sr.enabled = true;
-                c.gameObject.SetActive(true);
-                isShooting = false;
-                canMove = true;
-            }
-            else
-            {
-                shootArrow();
-            }
-            
+            shootArrow();
         }
         if (Input.GetKeyDown(KeyCode.W))
         {
@@ -556,15 +532,15 @@ public class PlayerScript : MonoBehaviour
                 var touchEndPosition = theTouch.position;
                 var rad = Mathf.Atan2(touchEndPosition.y - touchStartPosition.y, touchEndPosition.x - touchStartPosition.x);
                 var degree = rad * 180 / Mathf.PI;
-                if (degree >= 0 && degree <= 80)
+                if (degree >= 0 && degree <= 60)
                 {
                     arrow = arrow.next["upright"];
                 }
-                else if (degree > 80 && degree < 100)
+                else if (degree > 60 && degree < 120)
                 {
                     arrow = arrow.next["up"];
                 }
-                else if (degree >= 100 && degree < 180)
+                else if (degree >= 120 && degree < 180)
                 {
                     arrow = arrow.next["upleft"];
                 }
