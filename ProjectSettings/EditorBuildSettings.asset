@@ -5,7 +5,7 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/BeginningScene.unity
     guid: 74d62445c6d2d4aa780ed977419e7b44
   - enabled: 1
@@ -33,4 +33,3 @@ EditorBuildSettings:
     path: Assets/Scenes/wumpusRoom.unity
     guid: 2eb5f74d594964871ae89749f5a70634
   m_configObjects: {}
-  m_UseUCBPForAssetBundles: 0

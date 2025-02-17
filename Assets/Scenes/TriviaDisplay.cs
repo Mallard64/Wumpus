@@ -10,6 +10,10 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
+using UnityEngine;
+using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 
 
 // Displays an AI-generated multiple-choice trivia question and four possible answers
@@ -19,6 +23,24 @@ using System.Text.RegularExpressions;
 // Generates lines for the wumpus based on the result
 public class TriviaDisplay : MonoBehaviour
 {
+    [System.Serializable]
+    public class QuestionData
+    {
+        public string question;
+        public string answerA;
+        public string answerB;
+        public string answerC;
+        public string answerD;
+        public string correct;
+    }
+
+    [System.Serializable]
+    public class QuestionFile
+    {
+        public List<QuestionData> questions;
+    }
+    private List<QuestionData> localQuestions = new List<QuestionData>();
+    string filePath;
     public TextMeshProUGUI questionText;
     public TextMeshProUGUI answerText;
     public ToggleGroup choice;
@@ -182,7 +204,7 @@ public class TriviaDisplay : MonoBehaviour
         string url = "https://api.openai.com/v1/chat/completions";
 
         // Create the JSON request payload
-        string jsonContent = "{\"model\": \"gpt-3.5-turbo\", \"messages\": [{\"role\": \"user\", \"content\": \"Generate a trivia question with four multiple-choice answers. Clearly label four answers and the one correct answer. Use the format: Question: <question>\\nA: <answer1>\\nB: <answer2>\\nC: <answer3>\\nD: <answer4>\\nCorrect: <correctans>\"}], \"max_tokens\": 100}";
+        string jsonContent = "{\"model\": \"gpt-3.5-turbo\", \"messages\": [{\"role\": \"user\", \"content\": \"Generate a weird, truly unique trivia question with four multiple-choice answers. Clearly label four answers and the one correct answer. Use the format: Question: <question>\\nA: <answer1>\\nB: <answer2>\\nC: <answer3>\\nD: <answer4>\\nCorrect: <correctans>\"}], \"max_tokens\": 100}";
 
         using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
         {
@@ -202,6 +224,7 @@ public class TriviaDisplay : MonoBehaviour
             {
                 Debug.LogError($"Error: {request.error}");
                 Debug.LogError($"Response Code: {request.responseCode}");
+                UseFallbackQuestion();
                 Debug.LogError($"Response: {request.downloadHandler.text}");
             }
             else
@@ -241,6 +264,7 @@ public class TriviaDisplay : MonoBehaviour
                 else
                 {
                     Debug.LogWarning("Failed to parse the response correctly.");
+                    UseFallbackQuestion();
                 }
             }
         }
@@ -262,6 +286,11 @@ public class TriviaDisplay : MonoBehaviour
             answerC = cleanText(match.Groups[4].Value);
             answerD = cleanText(match.Groups[5].Value);
             correctAnswer = cleanText(match.Groups[6].Value);
+            localQuestions.Add(new QuestionData { question = question, answerA = answerA, answerB = answerB, answerC = answerC, answerD = answerD, correct = correctAnswer });
+        }
+        else
+        {
+            UseFallbackQuestion();
         }
     }
 
@@ -326,6 +355,18 @@ public class TriviaDisplay : MonoBehaviour
 
     void Start()
     {
+        filePath = Path.Combine(Application.persistentDataPath, "newdata.json");
+        if (File.Exists(filePath))
+        {
+            string json = File.ReadAllText(filePath);
+            QuestionFile data = JsonUtility.FromJson<QuestionFile>(json);
+            localQuestions = data.questions;
+            Debug.Log("Loaded questions from JSON file.");
+        }
+        else
+        {
+            Debug.LogWarning("No questions file found.");
+        }
         //check if wumpus room
         if (questions == 5)
         {
@@ -339,11 +380,51 @@ public class TriviaDisplay : MonoBehaviour
         StartAnswer();
     }
 
-    void Update() {
-        if (isTimed) {
+    private void UseFallbackQuestion()
+    {
+        toggle1.isOn = false;
+        toggle2.isOn = false;
+        toggle3.isOn = false;
+        toggle4.isOn = false;
+        if (localQuestions.Count > 0)
+        {
+            
+            QuestionData fallbackQuestion = localQuestions[rnd.Next(localQuestions.Count)];
+            SetQuestionText(fallbackQuestion.question);
+            t1.text = "A: " + fallbackQuestion.answerA;
+            t2.text = "B: " + fallbackQuestion.answerB;
+            t3.text = "C: " + fallbackQuestion.answerC;
+            t4.text = "D: " + fallbackQuestion.answerD;
+            correctans = fallbackQuestion.correct;
+        }
+        else
+        {
+            SetQuestionText("skibidi toilet");
+            t1.text = "A: " + "rizzler";
+            t2.text = "B: " + "ew no";
+            t3.text = "C: " + "GET OUT";
+            t4.text = "D: " + "D";
+            correctans = "rizzler";
+        }
+        
+    }
+
+    void Update()
+    {
+        QuestionFile data = new QuestionFile
+        {
+            questions = this.localQuestions
+        };
+
+        string json = JsonUtility.ToJson(data, true);
+        File.WriteAllText(filePath, json);
+        Debug.Log("Data saved to " + filePath);
+        if (isTimed)
+        {
             timedtime -= Time.deltaTime;
         }
-        if (timedtime <= 0.0f) {
+        if (timedtime <= 0.0f)
+        {
             if (right > questions / 2)
             {
 
@@ -393,7 +474,7 @@ public class TriviaDisplay : MonoBehaviour
             }
 
         }
-        
+
     }
 
     public void StartAnswer()
@@ -416,13 +497,13 @@ public class TriviaDisplay : MonoBehaviour
         {
             isTimed = true;
             answerText.text = correctans;
-            if (correctans.Substring(2,correctans.Length-2) == ans.Substring(2,ans.Length-2))
+            if (correctans.Substring(2, correctans.Length - 2) == ans.Substring(2, ans.Length - 2))
             {
                 if (questions == 5)
                 {
                     StartCoroutine(CallOpenAI_WumpusChat("Imagine you are the wumpus and the player has landed a hit on you. What do you say?"));
                 }
-                
+
                 right++;
                 answerText.color = Color.green;
             }
@@ -444,14 +525,15 @@ public class TriviaDisplay : MonoBehaviour
     }
 
     // Validates the answers when user chooses an option
-    void TaskOnClick1(bool isOn) {
+    void TaskOnClick1(bool isOn)
+    {
         if (isOn)
         {
             Debug.Log(t1.text);
             RevealAnswer(t1.text);
         }
-		
-	}
+
+    }
 
     void TaskOnClick2(bool isOn)
     {
@@ -460,7 +542,7 @@ public class TriviaDisplay : MonoBehaviour
             Debug.Log(t2.text);
             RevealAnswer(t2.text);
         }
-        
+
     }
 
     void TaskOnClick3(bool isOn)
@@ -470,7 +552,7 @@ public class TriviaDisplay : MonoBehaviour
             Debug.Log(t3.text);
             RevealAnswer(t3.text);
         }
-        
+
     }
 
     void TaskOnClick4(bool isOn)
@@ -480,7 +562,6 @@ public class TriviaDisplay : MonoBehaviour
             Debug.Log(t4.text);
             RevealAnswer(t4.text);
         }
-        
+
     }
 }
-

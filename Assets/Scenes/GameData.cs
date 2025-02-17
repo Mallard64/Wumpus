@@ -92,6 +92,11 @@ public class GameData : MonoBehaviour
         players = new List<PlayerData>();
         SaveData();
     }
+
+    public void Update()
+    {
+        SaveData();
+    }
 }
 
 [System.Serializable]
