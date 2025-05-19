@@ -48,6 +48,10 @@ public class TriviaDisplay : MonoBehaviour
     public Text t2;
     public Text t3;
     public Text t4;
+
+    public TextMeshProUGUI qnum;
+    public TextMeshProUGUI qmax;
+
     public Toggle toggle1;
     public Toggle toggle2;
     public Toggle toggle3;
@@ -296,7 +300,9 @@ public class TriviaDisplay : MonoBehaviour
 
     private void SetQuestionText(string qt)
     {
-        questionText.text = "Question #" + count + " of " + questions + ":\n" + qt;
+        qnum.text = count.ToString();
+        qmax.text = questions.ToString();
+        questionText.text = qt;
         Debug.Log("Setting question text: " + qt);
     }
 

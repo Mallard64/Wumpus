@@ -239,7 +239,7 @@ public class CellGenerator : MonoBehaviour
             {
                 //calculate the x/y of the generated cell
                 float xPos = (q+1) * hexWidth * 0.75f - 3.5f;
-                float yPos = -1 * r * hexHeight + (q % 2 == 1 ? 0 : hexHeight / 2) - 4.5f;
+                float yPos = -1 * r * hexHeight + (q % 2 == 1 ? -0.15f : (hexHeight / 2)) - 4.5f;
                 //Make the cell and add it to the 2D array
                 GameObject hexGO = Instantiate(hexPrefab, new Vector3(xPos, yPos, 0), Quaternion.identity);
                 hexGO.transform.parent = this.transform;

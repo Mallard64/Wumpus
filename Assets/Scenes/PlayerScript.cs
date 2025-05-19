@@ -82,6 +82,8 @@ public class PlayerScript : MonoBehaviour
 
     public InputField ifield;
 
+    public GameObject background;
+
     public TextMeshProUGUI n1;
 
     public TextMeshProUGUI t1;
@@ -287,10 +289,10 @@ public class PlayerScript : MonoBehaviour
             SceneManager.LoadScene("Lose");
         }
         score = 100 - numTurns + coins + 5 * numArrows + 50 * wumpusDead;
-        t1.text = "Scores: " + score;
-        t2.text = "Coins: " + coins;
-        t3.text = "Arrows: " + numArrows;
-        t4.text = "Turns: " + numTurns; 
+        t1.text = score.ToString();
+        t2.text = coins.ToString();
+        t3.text = numArrows.ToString();
+        t4.text = numTurns.ToString(); 
     }
 
     void buyArrows()
@@ -300,6 +302,7 @@ public class PlayerScript : MonoBehaviour
             c.gameObject.SetActive(false);
             tp.makeDisappear();
             sr.enabled = false;
+            background.SetActive(false);
             canMove = false;
             SceneManager.LoadScene("Cave_01", LoadSceneMode.Additive);
             SceneManager.SetActiveScene(SceneManager.GetSceneByName("Cave_01"));
@@ -313,6 +316,7 @@ public class PlayerScript : MonoBehaviour
             c.gameObject.SetActive(false);
             tp.makeDisappear();
             sr.enabled = false;
+            background.SetActive(false);
             canMove = false;
             SceneManager.LoadScene("Cave_02", LoadSceneMode.Additive);
             SceneManager.SetActiveScene(SceneManager.GetSceneByName("Cave_02"));
@@ -357,6 +361,7 @@ public class PlayerScript : MonoBehaviour
         }
         updateScores();
         if (canMove) {
+            background.SetActive(true);
             var newPlayer = player;
             if (Input.touchCount > 0)
             {
@@ -467,6 +472,7 @@ public class PlayerScript : MonoBehaviour
                 tp.makeDisappear();
                 sr.enabled = false;
                 canMove = false;
+                background.SetActive(false);
                 SceneManager.LoadScene("wumpusRoom", LoadSceneMode.Additive);
                 SceneManager.SetActiveScene(SceneManager.GetSceneByName("wumpusRoom"));
                 wumpusRoom = true;
@@ -482,6 +488,7 @@ public class PlayerScript : MonoBehaviour
                 sr.enabled = false;
                 tp.makeDisappear();
                 canMove = false;
+                background.SetActive(false);
                 SceneManager.LoadScene("Cave_03", LoadSceneMode.Additive);
                 SceneManager.SetActiveScene(SceneManager.GetSceneByName("Cave_03"));
                 pitRoom = true;
