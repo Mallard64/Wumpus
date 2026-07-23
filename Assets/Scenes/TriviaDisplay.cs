@@ -1,573 +1,572 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
-using UnityEngine.UI;
-using UnityEngine.Events;
-using UnityEngine.SceneManagement;
-using TMPro; // Namespace for TextMeshPro elements
-using UnityEngine.Networking;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
-using System.Text.RegularExpressions;
-using UnityEngine;
 using System.IO;
-using System.Collections.Generic;
-using System.Linq;
+using System.Text.RegularExpressions;
+using TMPro;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.Serialization;
+using UnityEngine.UI;
 
-
-// Displays an AI-generated multiple-choice trivia question and four possible answers
-// Validates the answer
-// Keeps a tally of total correct answers
-// Notifies the player of the overall result
-// Generates lines for the wumpus based on the result
+/// <summary>
+/// Runs a trivia round inside an encounter scene: pulls a generated multiple-choice question,
+/// grades the player's pick, tracks the running tally, and reports the outcome back to
+/// <see cref="PlayerScript"/> before unloading itself.
+/// <para>
+/// Questions that parse successfully are cached to disk and reused as offline fallbacks, so the
+/// game stays playable without network access or an API key.
+/// </para>
+/// <para>
+/// A round of <see cref="WumpusDuelQuestionCount"/> questions is the Wumpus duel and is narrated
+/// with in-character generated dialogue; any other length is an ordinary shop or pit challenge.
+/// </para>
+/// </summary>
 public class TriviaDisplay : MonoBehaviour
 {
+    /// <summary>Question count that marks a round as the Wumpus duel rather than a shop challenge.</summary>
+    private const int WumpusDuelQuestionCount = 5;
+
+    /// <summary>Seconds the correct answer stays on screen before the next question loads.</summary>
+    private const float AnswerRevealSeconds = 2.0f;
+
+    /// <summary>Length of the answer label prefix ("A:") stripped before comparing answers.</summary>
+    private const int AnswerLabelLength = 2;
+
+    /// <summary>Name of the on-disk cache of previously generated questions.</summary>
+    private const string QuestionCacheFileName = "newdata.json";
+
+    /// <summary>Prompt asking the model for a labelled multiple-choice question.</summary>
+    private const string QuestionPrompt =
+        "Generate a weird, truly unique trivia question with four multiple-choice answers. "
+        + "Clearly label four answers and the one correct answer. Use the format: "
+        + "Question: <question>\\nA: <answer1>\\nB: <answer2>\\nC: <answer3>\\nD: <answer4>\\nCorrect: <correctans>";
+
+    /// <summary>Regex capturing the question, four answers and the correct label from a response.</summary>
+    private const string QuestionPattern =
+        "\"content\":\\s*\"Question: (.*?)\\\\nA: (.*?)\\\\nB: (.*?)\\\\nC: (.*?)\\\\nD: (.*?)\\\\nCorrect: (.*?)\"";
+
+    private const string WumpusGreetingPrompt =
+        "Imagine you are the wumpus and the player has came to hunt you. What do you say?";
+
+    private const string WumpusTookHitPrompt =
+        "Imagine you are the wumpus and the player has landed a hit on you. What do you say?";
+
+    private const string WumpusLandedHitPrompt =
+        "Imagine you are the wumpus and you landed a blow on the the pesky hunter trying to kill you. What do you say?";
+
+    private const string WumpusDefeatedPrompt =
+        "Imagine you are the wumpus and the player just defeated you, but you can run away. What do you say?";
+
+    private const string WumpusVictoryPrompt =
+        "Imagine you are the wumpus and you are about to kill the pesky hunter who tried to kill you. What do you say?";
+
+    /// <summary>Appended to every dialogue prompt so responses do not arrive wrapped in quotes.</summary>
+    private const string NoQuotesInstruction = "Don't include any quotes.";
+
+    /// <summary>Name of the scene holding the player, used to route results back to it.</summary>
+    private const string MainSceneName = "MainScene";
+
+    /// <summary>Name of the GameObject carrying <see cref="PlayerScript"/> in the main scene.</summary>
+    private const string PlayerObjectName = "sprite";
+
+    /// <summary>A single multiple-choice question and its correct answer.</summary>
     [System.Serializable]
     public class QuestionData
     {
+        /// <summary>The question text.</summary>
         public string question;
+
+        /// <summary>Text of answer A.</summary>
         public string answerA;
+
+        /// <summary>Text of answer B.</summary>
         public string answerB;
+
+        /// <summary>Text of answer C.</summary>
         public string answerC;
+
+        /// <summary>Text of answer D.</summary>
         public string answerD;
+
+        /// <summary>The correct answer, as returned by the model.</summary>
         public string correct;
     }
 
+    /// <summary>Serialization wrapper for the on-disk question cache.</summary>
     [System.Serializable]
     public class QuestionFile
     {
+        /// <summary>Every question cached so far.</summary>
         public List<QuestionData> questions;
     }
-    private List<QuestionData> localQuestions = new List<QuestionData>();
-    string filePath;
+
+    /// <summary>Label showing the current question.</summary>
     public TextMeshProUGUI questionText;
+
+    /// <summary>Label showing the correct answer once the player has picked.</summary>
     public TextMeshProUGUI answerText;
-    public ToggleGroup choice;
-    public Text t1;
-    public Text t2;
-    public Text t3;
-    public Text t4;
 
-    public TextMeshProUGUI qnum;
-    public TextMeshProUGUI qmax;
+    /// <summary>Label for answer A.</summary>
+    [FormerlySerializedAs("t1")]
+    public Text answerTextA;
 
+    /// <summary>Label for answer B.</summary>
+    [FormerlySerializedAs("t2")]
+    public Text answerTextB;
+
+    /// <summary>Label for answer C.</summary>
+    [FormerlySerializedAs("t3")]
+    public Text answerTextC;
+
+    /// <summary>Label for answer D.</summary>
+    [FormerlySerializedAs("t4")]
+    public Text answerTextD;
+
+    /// <summary>Readout for the current question number.</summary>
+    [FormerlySerializedAs("qnum")]
+    public TextMeshProUGUI questionNumberText;
+
+    /// <summary>Readout for the total number of questions in this round.</summary>
+    [FormerlySerializedAs("qmax")]
+    public TextMeshProUGUI questionTotalText;
+
+    /// <summary>Toggle for answer A.</summary>
     public Toggle toggle1;
+
+    /// <summary>Toggle for answer B.</summary>
     public Toggle toggle2;
+
+    /// <summary>Toggle for answer C.</summary>
     public Toggle toggle3;
+
+    /// <summary>Toggle for answer D.</summary>
     public Toggle toggle4;
-    public string cavename;
 
-    public Text textComponent;
+    /// <summary>Name of this encounter scene, unloaded once the round resolves.</summary>
+    [FormerlySerializedAs("cavename")]
+    public string encounterSceneName;
 
-    public bool isTimed = false;
+    /// <summary>Label carrying the Wumpus's in-character dialogue during a duel.</summary>
+    [FormerlySerializedAs("textComponent")]
+    public Text wumpusDialogueText;
 
-    public float timedtime = 2.0f;
+    /// <summary>True while the correct answer is being displayed between questions.</summary>
+    [FormerlySerializedAs("isTimed")]
+    public bool isRevealingAnswer = false;
 
-    public static TriviaDisplay instance = null;
+    /// <summary>Seconds left before the next question loads.</summary>
+    [FormerlySerializedAs("timedtime")]
+    public float revealCountdown = AnswerRevealSeconds;
 
-    public int questions;
-    private string questionString;
+    /// <summary>
+    /// Questions in this round. Set per-scene in the inspector;
+    /// <see cref="WumpusDuelQuestionCount"/> marks the round as the Wumpus duel.
+    /// </summary>
+    [FormerlySerializedAs("questions")]
+    public int totalQuestions;
 
-    public int count = 0;
+    /// <summary>Questions asked so far in this round.</summary>
+    [FormerlySerializedAs("count")]
+    public int questionsAsked = 0;
 
-    public int right = 0;
+    /// <summary>Questions answered correctly so far in this round.</summary>
+    [FormerlySerializedAs("right")]
+    public int correctAnswers = 0;
 
-    public string usage;
+    /// <summary>
+    /// Which challenge this round belongs to: <c>"arrow"</c>, <c>"secret"</c>, <c>"wumpus"</c>
+    /// or <c>"pit"</c>. Passed straight back to <see cref="PlayerScript"/>.
+    /// </summary>
+    [FormerlySerializedAs("usage")]
+    public string challengeType;
 
-    public string correctans;
+    /// <summary>The correct answer for the question currently on screen.</summary>
+    [FormerlySerializedAs("correctans")]
+    public string correctAnswer;
 
+    /// <summary>Random source used when drawing an offline fallback question.</summary>
     public System.Random rnd = new System.Random();
 
-    private static readonly HttpClient httpClient = new HttpClient();
+    private List<QuestionData> localQuestions = new List<QuestionData>();
+    private string filePath;
 
-    // Calls OpenAI based on a given prompt
-    private IEnumerator CallOpenAI_WumpusChat(string prompt)
+    /// <summary>
+    /// Loads the cached question bank, opens the Wumpus duel with a taunt if applicable,
+    /// wires up the answer toggles, and asks the first question.
+    /// </summary>
+    private void Start()
     {
-        string apiKey = "REDACTED-OPENAI-KEY"; // Replace with your OpenAI API key
-        string url = "https://api.openai.com/v1/chat/completions";
+        filePath = Path.Combine(Application.persistentDataPath, QuestionCacheFileName);
+        LoadCachedQuestions();
 
-        // Create the JSON request payload
-        string jsonContent = "{\"model\": \"gpt-3.5-turbo\", \"messages\": [{\"role\": \"user\", \"content\": \"" + prompt + "Don't include any quotes." + "\"}], \"max_tokens\": 50}";
-
-        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        if (IsWumpusDuel)
         {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonContent);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", $"Bearer {apiKey}");
-
-            Debug.Log("Sending request to OpenAI API...");
-            Debug.Log("Request URL: " + url);
-            Debug.Log("Request JSON: " + jsonContent);
-
-            yield return request.SendWebRequest();
-
-            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
-            {
-                Debug.LogError($"Error: {request.error}");
-                Debug.LogError($"Response Code: {request.responseCode}");
-                Debug.LogError($"Response: {request.downloadHandler.text}");
-            }
-            else
-            {
-                string responseContent = request.downloadHandler.text;
-                Debug.Log("Received response from OpenAI API");
-                Debug.Log("Response: " + responseContent);
-
-                // Parse the JSON response manually
-                string generatedText = ExtractMessage(responseContent);
-                if (!string.IsNullOrEmpty(generatedText))
-                {
-                    Debug.Log("Response text: " + generatedText);
-                    textComponent.text = generatedText;
-                }
-                else
-                {
-                    Debug.LogWarning("No text found in the response.");
-                }
-            }
+            StartCoroutine(SpeakAsWumpus(WumpusGreetingPrompt));
         }
+
+        toggle1.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, answerTextA));
+        toggle2.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, answerTextB));
+        toggle3.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, answerTextC));
+        toggle4.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, answerTextD));
+
+        StartAnswer();
     }
 
-    // Calls OpenAI, notifies the player of the result, and ends the trivia minigame
-    private IEnumerator CallOpenAI_WumpusChatFinal(string prompt, bool isWin)
+    /// <summary>True when this round is the five-question duel with the Wumpus.</summary>
+    private bool IsWumpusDuel => totalQuestions == WumpusDuelQuestionCount;
+
+    /// <summary>
+    /// Advances the reveal timer and, once it expires, either resolves the round or moves on
+    /// to the next question. Also persists the question cache.
+    /// </summary>
+    private void Update()
     {
-        string apiKey = "REDACTED-OPENAI-KEY"; // Replace with your OpenAI API key
-        string url = "https://api.openai.com/v1/chat/completions";
+        SaveCachedQuestions();
 
-        // Create the JSON request payload
-        string jsonContent = "{\"model\": \"gpt-3.5-turbo\", \"messages\": [{\"role\": \"user\", \"content\": \"" + prompt + "Don't include any quotes." + "\"}], \"max_tokens\": 50}";
-
-        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        if (isRevealingAnswer)
         {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonContent);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", $"Bearer {apiKey}");
-
-            Debug.Log("Sending request to OpenAI API...");
-            Debug.Log("Request URL: " + url);
-            Debug.Log("Request JSON: " + jsonContent);
-
-            yield return request.SendWebRequest();
-
-            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
-            {
-                Debug.LogError($"Error: {request.error}");
-                Debug.LogError($"Response Code: {request.responseCode}");
-                Debug.LogError($"Response: {request.downloadHandler.text}");
-            }
-            else
-            {
-                string responseContent = request.downloadHandler.text;
-                Debug.Log("Received response from OpenAI API");
-                Debug.Log("Response: " + responseContent);
-
-                // Parse the JSON response manually
-                string generatedText = ExtractMessage(responseContent);
-                if (!string.IsNullOrEmpty(generatedText))
-                {
-                    Debug.Log("Response text: " + generatedText);
-                    textComponent.text = generatedText;
-                }
-                else
-                {
-                    Debug.LogWarning("No text found in the response.");
-                }
-            }
+            revealCountdown -= Time.deltaTime;
         }
-        var component = FindObjectInScene("MainScene", "sprite");
-        if (isWin)
+
+        if (revealCountdown > 0.0f)
         {
-            component.GetComponent<PlayerScript>().SendMessage("CorrectAnswer", usage);
+            return;
+        }
+
+        if (correctAnswers > totalQuestions / 2)
+        {
+            ResolveRound(true);
+        }
+        else if (questionsAsked >= totalQuestions)
+        {
+            ResolveRound(false);
         }
         else
         {
-            component.GetComponent<PlayerScript>().SendMessage("WrongAnswer", usage);
+            isRevealingAnswer = false;
+            revealCountdown = AnswerRevealSeconds;
+            StartAnswer();
         }
-        var scene = SceneManager.GetSceneByName(cavename);
+    }
+
+    /// <summary>
+    /// Clears the toggles, advances the question counter and requests the next question.
+    /// </summary>
+    public void StartAnswer()
+    {
+        ClearAnswerSelection();
+        questionsAsked++;
+        answerText.text = "";
+        StartCoroutine(RequestQuestion());
+    }
+
+    /// <summary>
+    /// Grades the player's pick, shows the correct answer, and charges them a coin for the attempt.
+    /// Ignored while a previous answer is still being revealed.
+    /// </summary>
+    /// <param name="chosenAnswer">Full label of the answer the player selected, e.g. "B: 1854".</param>
+    public void RevealAnswer(string chosenAnswer)
+    {
+        if (isRevealingAnswer)
+        {
+            return;
+        }
+
+        isRevealingAnswer = true;
+        answerText.text = correctAnswer;
+
+        if (StripAnswerLabel(correctAnswer) == StripAnswerLabel(chosenAnswer))
+        {
+            if (IsWumpusDuel)
+            {
+                StartCoroutine(SpeakAsWumpus(WumpusTookHitPrompt));
+            }
+            correctAnswers++;
+            answerText.color = Color.green;
+        }
+        else
+        {
+            if (IsWumpusDuel)
+            {
+                StartCoroutine(SpeakAsWumpus(WumpusLandedHitPrompt));
+            }
+            answerText.color = Color.red;
+        }
+
+        GameObject playerObject = FindObjectInScene(MainSceneName, PlayerObjectName);
+        if (playerObject != null)
+        {
+            playerObject.GetComponent<PlayerScript>().SendMessage("PayCoin");
+        }
+    }
+
+    /// <summary>
+    /// Extracts the assistant's message from a chat-completion response body.
+    /// </summary>
+    /// <param name="jsonResponse">Raw JSON body returned by the API.</param>
+    /// <returns>The cleaned message text, or <c>null</c> when no content field is present.</returns>
+    public static string ExtractMessage(string jsonResponse)
+    {
+        return OpenAIClient.ExtractMessageContent(jsonResponse);
+    }
+
+    /// <summary>
+    /// Ends the round: narrates the outcome if this is the Wumpus duel, tells
+    /// <see cref="PlayerScript"/> what happened, and unloads this scene.
+    /// </summary>
+    /// <param name="won">True when the player answered more than half the questions correctly.</param>
+    private void ResolveRound(bool won)
+    {
+        if (IsWumpusDuel)
+        {
+            StartCoroutine(SpeakFinalLineAndResolve(won ? WumpusDefeatedPrompt : WumpusVictoryPrompt, won));
+            return;
+        }
+
+        NotifyPlayer(won);
+        UnloadEncounterScene();
+    }
+
+    /// <summary>
+    /// Sends the round result to <see cref="PlayerScript"/> in the main scene.
+    /// </summary>
+    /// <param name="won">True when the player cleared the round.</param>
+    private void NotifyPlayer(bool won)
+    {
+        GameObject playerObject = FindObjectInScene(MainSceneName, PlayerObjectName);
+        if (playerObject != null)
+        {
+            playerObject.GetComponent<PlayerScript>()
+                .SendMessage(won ? "CorrectAnswer" : "WrongAnswer", challengeType);
+        }
+    }
+
+    /// <summary>Unloads this encounter scene, returning control to the map.</summary>
+    private void UnloadEncounterScene()
+    {
+        Scene scene = SceneManager.GetSceneByName(encounterSceneName);
         if (scene != null)
         {
             SceneManager.UnloadSceneAsync(scene);
         }
     }
 
-    // Generates a question using OpenAI
-    private IEnumerator CallOpenAI_Question()
+    /// <summary>
+    /// Shows a generated line of Wumpus dialogue. Leaves the previous line in place when the
+    /// API is unavailable.
+    /// </summary>
+    /// <param name="prompt">Scenario handed to the model.</param>
+    /// <returns>A coroutine to be driven with <c>StartCoroutine</c>.</returns>
+    private IEnumerator SpeakAsWumpus(string prompt)
     {
-        Dictionary<int, Text> p = new Dictionary<int, Text>();
-        p.Add(0, t1);
-        p.Add(1, t2);
-        p.Add(2, t3);
-        p.Add(3, t4);
-
-        string apiKey = "REDACTED-OPENAI-KEY"; // Replace with your OpenAI API key
-        string url = "https://api.openai.com/v1/chat/completions";
-
-        // Create the JSON request payload
-        string jsonContent = "{\"model\": \"gpt-3.5-turbo\", \"messages\": [{\"role\": \"user\", \"content\": \"Generate a weird, truly unique trivia question with four multiple-choice answers. Clearly label four answers and the one correct answer. Use the format: Question: <question>\\nA: <answer1>\\nB: <answer2>\\nC: <answer3>\\nD: <answer4>\\nCorrect: <correctans>\"}], \"max_tokens\": 100}";
-
-        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
-        {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonContent);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", $"Bearer {apiKey}");
-
-            Debug.Log("Sending request to OpenAI API...");
-            Debug.Log("Request URL: " + url);
-            Debug.Log("Request JSON: " + jsonContent);
-
-            yield return request.SendWebRequest();
-
-            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
+        return OpenAIClient.SendChatCompletion(
+            prompt + NoQuotesInstruction,
+            OpenAIClient.ShortResponseTokens,
+            response =>
             {
-                Debug.LogError($"Error: {request.error}");
-                Debug.LogError($"Response Code: {request.responseCode}");
-                UseFallbackQuestion();
-                Debug.LogError($"Response: {request.downloadHandler.text}");
-            }
-            else
-            {
-                string responseContent = request.downloadHandler.text;
-                Debug.Log("Received response from OpenAI API");
-                Debug.Log("Response: " + responseContent);
-
-                // Parse the JSON response manually
-                string question, answerA, answerB, answerC, answerD;
-                ParseQuestionAndAnswers(responseContent, out question, out answerA, out answerB, out answerC, out answerD, out correctans);
-
-                if (!string.IsNullOrEmpty(question) && !string.IsNullOrEmpty(answerA) && !string.IsNullOrEmpty(answerB) && !string.IsNullOrEmpty(answerC) && !string.IsNullOrEmpty(answerD) && !string.IsNullOrEmpty(correctans))
+                string line = OpenAIClient.ExtractMessageContent(response);
+                if (!string.IsNullOrEmpty(line))
                 {
-                    Debug.Log("Parsed Question: " + question);
-                    Debug.Log("A: " + answerA);
-                    Debug.Log("B: " + answerB);
-                    Debug.Log("C: " + answerC);
-                    Debug.Log("D: " + answerD);
-                    Debug.Log("Correct Answer: " + correctans);
-
-                    SetQuestionText(question);
-                    p[0].text = "A: " + answerA;
-                    p[1].text = "B: " + answerB;
-                    p[2].text = "C: " + answerC;
-                    p[3].text = "D: " + answerD;
-
-                    List<int> keys = new List<int>(p.Keys);
-                    for (int i = 0; i < keys.Count; i++)
-                    {
-                        int j = Random.Range(0, keys.Count);
-                        int temp = keys[i];
-                        keys[i] = keys[j];
-                        keys[j] = temp;
-                    }
+                    wumpusDialogueText.text = line;
                 }
-                else
-                {
-                    Debug.LogWarning("Failed to parse the response correctly.");
-                    UseFallbackQuestion();
-                }
-            }
-        }
+            });
     }
 
-    private void ParseQuestionAndAnswers(string jsonResponse, out string question, out string answerA, out string answerB, out string answerC, out string answerD, out string correctAnswer)
+    /// <summary>
+    /// Speaks the Wumpus's closing line, then reports the result and unloads the scene.
+    /// The result is reported whether or not the dialogue call succeeds.
+    /// </summary>
+    /// <param name="prompt">Scenario handed to the model.</param>
+    /// <param name="won">True when the player cleared the round.</param>
+    /// <returns>A coroutine to be driven with <c>StartCoroutine</c>.</returns>
+    private IEnumerator SpeakFinalLineAndResolve(string prompt, bool won)
     {
-        // Initialize outputs
-        question = answerA = answerB = answerC = answerD = correctAnswer = null;
+        yield return SpeakAsWumpus(prompt);
 
-        // Extract content using a regular expression
-        string pattern = "\"content\":\\s*\"Question: (.*?)\\\\nA: (.*?)\\\\nB: (.*?)\\\\nC: (.*?)\\\\nD: (.*?)\\\\nCorrect: (.*?)\"";
-        var match = Regex.Match(jsonResponse, pattern);
-        if (match.Success)
-        {
-            question = cleanText(match.Groups[1].Value);
-            answerA = cleanText(match.Groups[2].Value);
-            answerB = cleanText(match.Groups[3].Value);
-            answerC = cleanText(match.Groups[4].Value);
-            answerD = cleanText(match.Groups[5].Value);
-            correctAnswer = cleanText(match.Groups[6].Value);
-            localQuestions.Add(new QuestionData { question = question, answerA = answerA, answerB = answerB, answerC = answerC, answerD = answerD, correct = correctAnswer });
-        }
-        else
+        NotifyPlayer(won);
+        UnloadEncounterScene();
+    }
+
+    /// <summary>
+    /// Requests a fresh multiple-choice question and puts it on screen, falling back to the
+    /// cached question bank when the call or the parse fails.
+    /// </summary>
+    /// <returns>A coroutine to be driven with <c>StartCoroutine</c>.</returns>
+    private IEnumerator RequestQuestion()
+    {
+        return OpenAIClient.SendChatCompletion(
+            QuestionPrompt,
+            OpenAIClient.QuestionResponseTokens,
+            DisplayQuestionFromResponse,
+            _ => UseFallbackQuestion());
+    }
+
+    /// <summary>
+    /// Parses a chat-completion response into a question and shows it, or falls back to the
+    /// cached bank if any field is missing.
+    /// </summary>
+    /// <param name="response">Raw JSON body returned by the API.</param>
+    private void DisplayQuestionFromResponse(string response)
+    {
+        QuestionData parsed = ParseQuestion(response);
+        if (parsed == null)
         {
             UseFallbackQuestion();
+            return;
         }
+
+        localQuestions.Add(parsed);
+        ShowQuestion(parsed);
     }
 
-    private void SetQuestionText(string qt)
+    /// <summary>
+    /// Pulls the question, four answers and correct label out of a chat-completion response.
+    /// </summary>
+    /// <param name="jsonResponse">Raw JSON body returned by the API.</param>
+    /// <returns>The parsed question, or <c>null</c> when the response did not match the format.</returns>
+    private static QuestionData ParseQuestion(string jsonResponse)
     {
-        qnum.text = count.ToString();
-        qmax.text = questions.ToString();
-        questionText.text = qt;
-        Debug.Log("Setting question text: " + qt);
-    }
-
-    private int DetermineCorrectAnswerIndex(string answerA, string answerB, string answerC, string answerD)
-    {
-        // Simple logic to determine the correct answer index
-        if (answerA.Contains("(correct)")) return 0;
-        if (answerB.Contains("(correct)")) return 1;
-        if (answerC.Contains("(correct)")) return 2;
-        if (answerD.Contains("(correct)")) return 3;
-        return -1; // No correct answer found
-    }
-
-    private static string cleanText(string text)
-    {
-        return Regex.Replace(text, @"[\\\/]", "");
-    }
-
-    private string ExtractGeneratedText(string jsonResponse)
-    {
-        string pattern = "\"content\": \"(.*?)\"";
-        var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, pattern);
-        if (match.Success)
+        Match match = Regex.Match(jsonResponse, QuestionPattern);
+        if (!match.Success)
         {
-            return cleanText(match.Groups[1].Value);
+            return null;
         }
-        return null;
-    }
 
-    public static string ExtractMessage(string jsonResponse)
-    {
-        string pattern = "\"content\": \"(.*?)\"";
-        var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, pattern);
-        if (match.Success)
+        QuestionData parsed = new QuestionData
         {
-            return cleanText(match.Groups[1].Value);
-        }
-        return null;
+            question = OpenAIClient.CleanText(match.Groups[1].Value),
+            answerA = OpenAIClient.CleanText(match.Groups[2].Value),
+            answerB = OpenAIClient.CleanText(match.Groups[3].Value),
+            answerC = OpenAIClient.CleanText(match.Groups[4].Value),
+            answerD = OpenAIClient.CleanText(match.Groups[5].Value),
+            correct = OpenAIClient.CleanText(match.Groups[6].Value)
+        };
+
+        bool isComplete = !string.IsNullOrEmpty(parsed.question)
+            && !string.IsNullOrEmpty(parsed.answerA)
+            && !string.IsNullOrEmpty(parsed.answerB)
+            && !string.IsNullOrEmpty(parsed.answerC)
+            && !string.IsNullOrEmpty(parsed.answerD)
+            && !string.IsNullOrEmpty(parsed.correct);
+
+        return isComplete ? parsed : null;
     }
 
+    /// <summary>Puts a question and its four answers on screen.</summary>
+    /// <param name="data">The question to display.</param>
+    private void ShowQuestion(QuestionData data)
+    {
+        questionNumberText.text = questionsAsked.ToString();
+        questionTotalText.text = totalQuestions.ToString();
+        questionText.text = data.question;
+
+        answerTextA.text = "A: " + data.answerA;
+        answerTextB.text = "B: " + data.answerB;
+        answerTextC.text = "C: " + data.answerC;
+        answerTextD.text = "D: " + data.answerD;
+
+        correctAnswer = data.correct;
+    }
+
+    /// <summary>
+    /// Draws a question from the offline cache, or a hardcoded placeholder when the cache is empty.
+    /// </summary>
+    private void UseFallbackQuestion()
+    {
+        ClearAnswerSelection();
+
+        QuestionData fallback = localQuestions != null && localQuestions.Count > 0
+            ? localQuestions[rnd.Next(localQuestions.Count)]
+            : PlaceholderQuestion();
+
+        ShowQuestion(fallback);
+    }
+
+    /// <summary>Last-resort question used when no question has ever been cached.</summary>
+    /// <returns>A hardcoded placeholder question.</returns>
+    private static QuestionData PlaceholderQuestion()
+    {
+        return new QuestionData
+        {
+            question = "skibidi toilet",
+            answerA = "rizzler",
+            answerB = "ew no",
+            answerC = "GET OUT",
+            answerD = "D",
+            correct = "rizzler"
+        };
+    }
+
+    /// <summary>Unchecks all four answer toggles.</summary>
+    private void ClearAnswerSelection()
+    {
+        toggle1.isOn = false;
+        toggle2.isOn = false;
+        toggle3.isOn = false;
+        toggle4.isOn = false;
+    }
+
+    /// <summary>Grades the matching answer when one of the four toggles is switched on.</summary>
+    /// <param name="isOn">Whether the toggle was switched on rather than off.</param>
+    /// <param name="answerLabel">Label holding the answer text tied to that toggle.</param>
+    private void OnAnswerToggled(bool isOn, Text answerLabel)
+    {
+        if (isOn)
+        {
+            RevealAnswer(answerLabel.text);
+        }
+    }
+
+    /// <summary>Drops the leading "A:" style prefix so two answers can be compared on text alone.</summary>
+    /// <param name="answer">A full answer label.</param>
+    /// <returns>The answer text without its letter prefix.</returns>
+    private static string StripAnswerLabel(string answer)
+    {
+        return answer.Substring(AnswerLabelLength, answer.Length - AnswerLabelLength);
+    }
+
+    /// <summary>Reads the cached question bank from disk, if one has been written.</summary>
+    private void LoadCachedQuestions()
+    {
+        if (!File.Exists(filePath))
+        {
+            Debug.LogWarning("No questions file found.");
+            return;
+        }
+
+        string json = File.ReadAllText(filePath);
+        QuestionFile data = JsonUtility.FromJson<QuestionFile>(json);
+        localQuestions = data.questions ?? new List<QuestionData>();
+    }
+
+    /// <summary>Writes the cached question bank back to disk.</summary>
+    private void SaveCachedQuestions()
+    {
+        QuestionFile data = new QuestionFile { questions = localQuestions };
+        File.WriteAllText(filePath, JsonUtility.ToJson(data, true));
+    }
+
+    /// <summary>
+    /// Finds a root GameObject by name inside a loaded scene.
+    /// </summary>
+    /// <param name="sceneName">Scene to search.</param>
+    /// <param name="objectName">Name of the root GameObject to find.</param>
+    /// <returns>The GameObject, or <c>null</c> when the scene is not loaded or has no such object.</returns>
     private GameObject FindObjectInScene(string sceneName, string objectName)
     {
         Scene scene = SceneManager.GetSceneByName(sceneName);
-        if (scene.isLoaded)
+        if (!scene.isLoaded)
         {
-            foreach (GameObject obj in scene.GetRootGameObjects())
+            return null;
+        }
+
+        foreach (GameObject obj in scene.GetRootGameObjects())
+        {
+            if (obj.name == objectName)
             {
-                if (obj.name == objectName)
-                {
-                    return obj;
-                }
+                return obj;
             }
         }
         return null;
-    }
-
-    void Start()
-    {
-        filePath = Path.Combine(Application.persistentDataPath, "newdata.json");
-        if (File.Exists(filePath))
-        {
-            string json = File.ReadAllText(filePath);
-            QuestionFile data = JsonUtility.FromJson<QuestionFile>(json);
-            localQuestions = data.questions;
-            Debug.Log("Loaded questions from JSON file.");
-        }
-        else
-        {
-            Debug.LogWarning("No questions file found.");
-        }
-        //check if wumpus room
-        if (questions == 5)
-        {
-            StartCoroutine(CallOpenAI_WumpusChat("Imagine you are the wumpus and the player has came to hunt you. What do you say?"));
-        }
-        toggle1.onValueChanged.AddListener(TaskOnClick1);
-        toggle2.onValueChanged.AddListener(TaskOnClick2);
-        toggle3.onValueChanged.AddListener(TaskOnClick3);
-        toggle4.onValueChanged.AddListener(TaskOnClick4);
-
-        StartAnswer();
-    }
-
-    private void UseFallbackQuestion()
-    {
-        toggle1.isOn = false;
-        toggle2.isOn = false;
-        toggle3.isOn = false;
-        toggle4.isOn = false;
-        if (localQuestions.Count > 0)
-        {
-            
-            QuestionData fallbackQuestion = localQuestions[rnd.Next(localQuestions.Count)];
-            SetQuestionText(fallbackQuestion.question);
-            t1.text = "A: " + fallbackQuestion.answerA;
-            t2.text = "B: " + fallbackQuestion.answerB;
-            t3.text = "C: " + fallbackQuestion.answerC;
-            t4.text = "D: " + fallbackQuestion.answerD;
-            correctans = fallbackQuestion.correct;
-        }
-        else
-        {
-            SetQuestionText("skibidi toilet");
-            t1.text = "A: " + "rizzler";
-            t2.text = "B: " + "ew no";
-            t3.text = "C: " + "GET OUT";
-            t4.text = "D: " + "D";
-            correctans = "rizzler";
-        }
-        
-    }
-
-    void Update()
-    {
-        QuestionFile data = new QuestionFile
-        {
-            questions = this.localQuestions
-        };
-
-        string json = JsonUtility.ToJson(data, true);
-        File.WriteAllText(filePath, json);
-        Debug.Log("Data saved to " + filePath);
-        if (isTimed)
-        {
-            timedtime -= Time.deltaTime;
-        }
-        if (timedtime <= 0.0f)
-        {
-            if (right > questions / 2)
-            {
-
-                if (questions == 5)
-                {
-                    StartCoroutine(CallOpenAI_WumpusChatFinal("Imagine you are the wumpus and the player just defeated you, but you can run away. What do you say?", true));
-                }
-                else
-                {
-                    var component = FindObjectInScene("MainScene", "sprite");
-                    if (component != null)
-                    {
-                        component.GetComponent<PlayerScript>().SendMessage("CorrectAnswer", usage);
-                    }
-                    var scene = SceneManager.GetSceneByName(cavename);
-                    if (scene != null)
-                    {
-                        SceneManager.UnloadSceneAsync(scene);
-                    }
-                }
-            }
-            else if (count >= questions)
-            {
-                if (questions == 5)
-                {
-                    StartCoroutine(CallOpenAI_WumpusChatFinal("Imagine you are the wumpus and you are about to kill the pesky hunter who tried to kill you. What do you say?", false));
-                }
-                else
-                {
-                    var component = FindObjectInScene("MainScene", "sprite");
-                    if (component != null)
-                    {
-                        component.GetComponent<PlayerScript>().SendMessage("WrongAnswer", usage);
-                    }
-                    var scene = SceneManager.GetSceneByName(cavename);
-                    if (scene != null)
-                    {
-                        SceneManager.UnloadSceneAsync(scene);
-                    }
-                }
-            }
-            else
-            {
-                isTimed = false;
-                timedtime = 2.0f;
-                StartAnswer();
-            }
-
-        }
-
-    }
-
-    public void StartAnswer()
-    {
-        toggle1.isOn = false;
-        toggle2.isOn = false;
-        toggle3.isOn = false;
-        toggle4.isOn = false;
-        count++;
-        // Optionally hide the answer text initially
-        answerText.text = "";
-        StartCoroutine(CallOpenAI_Question());
-
-    }
-
-    // Call this method when the button is clicked to reveal the answer
-    public void RevealAnswer(string ans)
-    {
-        if (!isTimed)
-        {
-            isTimed = true;
-            answerText.text = correctans;
-            if (correctans.Substring(2, correctans.Length - 2) == ans.Substring(2, ans.Length - 2))
-            {
-                if (questions == 5)
-                {
-                    StartCoroutine(CallOpenAI_WumpusChat("Imagine you are the wumpus and the player has landed a hit on you. What do you say?"));
-                }
-
-                right++;
-                answerText.color = Color.green;
-            }
-            else
-            {
-                if (questions == 5)
-                {
-                    StartCoroutine(CallOpenAI_WumpusChat("Imagine you are the wumpus and you landed a blow on the the pesky hunter trying to kill you. What do you say?"));
-                }
-                answerText.color = Color.red;
-            }
-            var component = FindObjectInScene("MainScene", "sprite");
-            if (component)
-            {
-                component.GetComponent<PlayerScript>().SendMessage("payCoin");
-            }
-
-        }
-    }
-
-    // Validates the answers when user chooses an option
-    void TaskOnClick1(bool isOn)
-    {
-        if (isOn)
-        {
-            Debug.Log(t1.text);
-            RevealAnswer(t1.text);
-        }
-
-    }
-
-    void TaskOnClick2(bool isOn)
-    {
-        if (isOn)
-        {
-            Debug.Log(t2.text);
-            RevealAnswer(t2.text);
-        }
-
-    }
-
-    void TaskOnClick3(bool isOn)
-    {
-        if (isOn)
-        {
-            Debug.Log(t3.text);
-            RevealAnswer(t3.text);
-        }
-
-    }
-
-    void TaskOnClick4(bool isOn)
-    {
-        if (isOn)
-        {
-            Debug.Log(t4.text);
-            RevealAnswer(t4.text);
-        }
-
     }
 }

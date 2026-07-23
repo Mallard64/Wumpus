@@ -1,13 +1,20 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-// Script to replay the game after it ends
+/// <summary>
+/// Wires the "play again" button on the win and lose screens back to the main scene.
+/// </summary>
 public class LoadMainScene : MonoBehaviour
 {
-    public Button yourButton; // Drag your button here in the Inspector
+    /// <summary>Scene loaded when the button is pressed.</summary>
+    private const string MainSceneName = "MainScene";
 
-    void Start()
+    /// <summary>The replay button. Assign this in the inspector.</summary>
+    public Button yourButton;
+
+    /// <summary>Subscribes to the replay button, if one has been assigned.</summary>
+    private void Start()
     {
         if (yourButton != null)
         {
@@ -15,8 +22,9 @@ public class LoadMainScene : MonoBehaviour
         }
     }
 
-    void OnButtonPress()
+    /// <summary>Restarts the game by loading the main scene.</summary>
+    private void OnButtonPress()
     {
-        SceneManager.LoadScene("MainScene");
+        SceneManager.LoadScene(MainSceneName);
     }
 }

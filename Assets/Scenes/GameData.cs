@@ -3,19 +3,28 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 
-// GameData loads and saves the leaderboard scores
-// The scores are saved to a json file on the local machine
-// The default player name is read from the machine name
+/// <summary>
+/// Persists the leaderboard to a JSON file in the platform's persistent data directory.
+/// <para>
+/// Survives scene loads as a singleton, so a run's result written on the map is still readable
+/// from the win and lose screens.
+/// </para>
+/// </summary>
 public class GameData : MonoBehaviour
 {
+    /// <summary>Name of the leaderboard file inside <see cref="Application.persistentDataPath"/>.</summary>
+    public const string SaveFileName = "gamedata.json";
+
+    /// <summary>The surviving instance, set on first <c>Awake</c>.</summary>
     public static GameData instance;
 
-    // List of player data
+    /// <summary>Every player recorded on the leaderboard.</summary>
     public List<PlayerData> players = new List<PlayerData>();
 
     private string filePath;
 
-    void Awake()
+    /// <summary>Enforces the singleton and resolves the save path.</summary>
+    private void Awake()
     {
         // Ensure that only one instance of this object exists
         if (instance == null)
@@ -28,16 +37,16 @@ public class GameData : MonoBehaviour
             Destroy(gameObject);
         }
 
-        // Set the file path for the JSON file
-        filePath = Path.Combine(Application.persistentDataPath, "gamedata.json");
+        filePath = Path.Combine(Application.persistentDataPath, SaveFileName);
     }
 
-    void Start()
+    /// <summary>Loads any previously saved leaderboard.</summary>
+    private void Start()
     {
-        // Load data from JSON file if it exists
         LoadData();
     }
 
+    /// <summary>Writes the in-memory leaderboard to disk, overwriting the previous save.</summary>
     public void SaveData()
     {
         GameDataFile data = new GameDataFile
@@ -50,6 +59,9 @@ public class GameData : MonoBehaviour
         Debug.Log("Data saved to " + filePath);
     }
 
+    /// <summary>
+    /// Reads the leaderboard from disk. Leaves the in-memory list untouched when no save exists.
+    /// </summary>
     public void LoadData()
     {
         if (File.Exists(filePath))
@@ -66,6 +78,17 @@ public class GameData : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Records the result of a run, replacing the existing entry for that player if there is one,
+    /// then saves to disk.
+    /// </summary>
+    /// <param name="playerName">Name the run is recorded under.</param>
+    /// <param name="score">Final score.</param>
+    /// <param name="turns">Rooms the player moved through.</param>
+    /// <param name="coins">Coins held at the end of the run.</param>
+    /// <param name="arrows">Arrows left at the end of the run.</param>
+    /// <param name="killedWumpus">True when the run ended in a win.</param>
+    /// <param name="deaths">Short epitaph describing how the run ended.</param>
     public void AddOrUpdatePlayerData(string playerName, int score, int turns, int coins, int arrows, bool killedWumpus, string deaths)
     {
         PlayerData playerData = players.FirstOrDefault(p => p.playerName == playerName);
@@ -82,37 +105,61 @@ public class GameData : MonoBehaviour
         SaveData();
     }
 
+    /// <summary>Looks up a player's leaderboard entry.</summary>
+    /// <param name="playerName">Name to search for.</param>
+    /// <returns>The player's entry, or <c>null</c> when they have no recorded run.</returns>
     public PlayerData GetPlayerData(string playerName)
     {
         return players.FirstOrDefault(p => p.playerName == playerName);
     }
 
+    /// <summary>Wipes the leaderboard and saves the empty result.</summary>
     public void ResetData()
     {
         players = new List<PlayerData>();
         SaveData();
     }
 
+    /// <remarks>
+    /// NOTE: this writes the whole leaderboard to disk on every frame. It is preserved as-is to
+    /// keep behaviour identical; see the README's "Known issues" section.
+    /// </remarks>
     public void Update()
     {
         SaveData();
     }
 }
 
+/// <summary>One player's best recorded run.</summary>
 [System.Serializable]
 public class PlayerData
 {
+    /// <summary>Name the run was recorded under.</summary>
     public string playerName;
+
+    /// <summary>Final score.</summary>
     public int score;
+
+    /// <summary>Short epitaph describing how the run ended.</summary>
     public string deaths;
+
+    /// <summary>Rooms the player moved through.</summary>
     public int turns;
+
+    /// <summary>Coins held at the end of the run.</summary>
     public int coins;
+
+    /// <summary>Arrows left at the end of the run.</summary>
     public int arrows;
+
+    /// <summary>True when the run ended in a win.</summary>
     public bool killedWumpus;
 }
 
+/// <summary>Serialization wrapper for the on-disk leaderboard.</summary>
 [System.Serializable]
 public class GameDataFile
 {
+    /// <summary>Every recorded player.</summary>
     public List<PlayerData> players;
 }

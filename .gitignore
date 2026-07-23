@@ -12,3 +12,7 @@ obj/
 CaseSensitiveTest
 iOS/
 
+
+# Local OpenAI API key (never commit the real one)
+Assets/Resources/openai_api_key.txt
+Assets/Resources/openai_api_key.txt.meta
