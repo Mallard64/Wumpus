@@ -17,10 +17,6 @@ No hosted build yet — the project runs from the Unity Editor (see [Running loc
 | ![Cave map screenshot](docs/screenshot-map.png) | ![Trivia encounter screenshot](docs/screenshot-trivia.png) |
 | The hex cave map with proximity warnings | An AI-generated trivia encounter |
 
-> Screenshots not captured yet. Drop two PNGs at `docs/screenshot-map.png` and
-> `docs/screenshot-trivia.png` and these render automatically. A 10-second GIF of a swipe-move →
-> hazard → trivia → win sequence is the single highest-value addition to this README.
-
 ---
 
 ## Overview

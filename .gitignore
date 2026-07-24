@@ -4,6 +4,8 @@ Logs/
 *.app/
 .DS_Store
 *.csproj
+*.sln
+UserSettings/
 Assets/TextMesh Pro.meta
 Assets/TextMesh Pro/
 .vs/
