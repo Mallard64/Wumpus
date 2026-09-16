@@ -12,18 +12,19 @@ using System.Linq;
 /// </summary>
 public class GameData : MonoBehaviour
 {
-    /// <summary>Name of the leaderboard file inside <see cref="Application.persistentDataPath"/>.</summary>
     public const string SaveFileName = "gamedata.json";
 
-    /// <summary>The surviving instance, set on first <c>Awake</c>.</summary>
     public static GameData instance;
-
-    /// <summary>Every player recorded on the leaderboard.</summary>
     public List<PlayerData> players = new List<PlayerData>();
 
     private string filePath;
 
-    /// <summary>Enforces the singleton and resolves the save path.</summary>
+    /// <summary>
+    /// Resolved on first use rather than in <c>Awake</c>, so saving and loading work even when
+    /// the component has not been through the normal Unity lifecycle (as in edit-mode tests).
+    /// </summary>
+    private string SaveFilePath => filePath ??= Path.Combine(Application.persistentDataPath, SaveFileName);
+
     private void Awake()
     {
         // Ensure that only one instance of this object exists
@@ -36,17 +37,13 @@ public class GameData : MonoBehaviour
         {
             Destroy(gameObject);
         }
-
-        filePath = Path.Combine(Application.persistentDataPath, SaveFileName);
     }
 
-    /// <summary>Loads any previously saved leaderboard.</summary>
     private void Start()
     {
         LoadData();
     }
 
-    /// <summary>Writes the in-memory leaderboard to disk, overwriting the previous save.</summary>
     public void SaveData()
     {
         GameDataFile data = new GameDataFile
@@ -55,8 +52,8 @@ public class GameData : MonoBehaviour
         };
 
         string json = JsonUtility.ToJson(data, true);
-        File.WriteAllText(filePath, json);
-        Debug.Log("Data saved to " + filePath);
+        File.WriteAllText(SaveFilePath, json);
+        Debug.Log("Data saved to " + SaveFilePath);
     }
 
     /// <summary>
@@ -64,17 +61,17 @@ public class GameData : MonoBehaviour
     /// </summary>
     public void LoadData()
     {
-        if (File.Exists(filePath))
+        if (File.Exists(SaveFilePath))
         {
-            string json = File.ReadAllText(filePath);
+            string json = File.ReadAllText(SaveFilePath);
             GameDataFile data = JsonUtility.FromJson<GameDataFile>(json);
 
             this.players = data.players ?? new List<PlayerData>();
-            Debug.Log("Data loaded from " + filePath);
+            Debug.Log("Data loaded from " + SaveFilePath);
         }
         else
         {
-            Debug.LogWarning("No save file found at " + filePath);
+            Debug.LogWarning("No save file found at " + SaveFilePath);
         }
     }
 
@@ -82,84 +79,51 @@ public class GameData : MonoBehaviour
     /// Records the result of a run, replacing the existing entry for that player if there is one,
     /// then saves to disk.
     /// </summary>
-    /// <param name="playerName">Name the run is recorded under.</param>
-    /// <param name="score">Final score.</param>
-    /// <param name="turns">Rooms the player moved through.</param>
-    /// <param name="coins">Coins held at the end of the run.</param>
-    /// <param name="arrows">Arrows left at the end of the run.</param>
-    /// <param name="killedWumpus">True when the run ended in a win.</param>
-    /// <param name="deaths">Short epitaph describing how the run ended.</param>
     public void AddOrUpdatePlayerData(string playerName, int score, int turns, int coins, int arrows, bool killedWumpus, string deaths)
     {
         PlayerData playerData = players.FirstOrDefault(p => p.playerName == playerName);
         if (playerData == null)
         {
-            playerData = new PlayerData { playerName = playerName, score = score, killedWumpus = killedWumpus, deaths = deaths};
+            playerData = new PlayerData { playerName = playerName };
             players.Add(playerData);
         }
-        else
-        {
-            playerData.score = score;
-            playerData.deaths = deaths;
-        }
+
+        playerData.score = score;
+        playerData.deaths = deaths;
+        playerData.turns = turns;
+        playerData.coins = coins;
+        playerData.arrows = arrows;
+        playerData.killedWumpus = killedWumpus;
+
         SaveData();
     }
 
-    /// <summary>Looks up a player's leaderboard entry.</summary>
-    /// <param name="playerName">Name to search for.</param>
-    /// <returns>The player's entry, or <c>null</c> when they have no recorded run.</returns>
     public PlayerData GetPlayerData(string playerName)
     {
         return players.FirstOrDefault(p => p.playerName == playerName);
     }
 
-    /// <summary>Wipes the leaderboard and saves the empty result.</summary>
     public void ResetData()
     {
         players = new List<PlayerData>();
         SaveData();
     }
-
-    /// <remarks>
-    /// NOTE: this writes the whole leaderboard to disk on every frame. It is preserved as-is to
-    /// keep behaviour identical; see the README's "Known issues" section.
-    /// </remarks>
-    public void Update()
-    {
-        SaveData();
-    }
 }
 
-/// <summary>One player's best recorded run.</summary>
 [System.Serializable]
 public class PlayerData
 {
-    /// <summary>Name the run was recorded under.</summary>
     public string playerName;
-
-    /// <summary>Final score.</summary>
     public int score;
-
-    /// <summary>Short epitaph describing how the run ended.</summary>
     public string deaths;
-
-    /// <summary>Rooms the player moved through.</summary>
     public int turns;
-
-    /// <summary>Coins held at the end of the run.</summary>
     public int coins;
-
-    /// <summary>Arrows left at the end of the run.</summary>
     public int arrows;
-
-    /// <summary>True when the run ended in a win.</summary>
     public bool killedWumpus;
 }
 
-/// <summary>Serialization wrapper for the on-disk leaderboard.</summary>
 [System.Serializable]
 public class GameDataFile
 {
-    /// <summary>Every recorded player.</summary>
     public List<PlayerData> players;
 }

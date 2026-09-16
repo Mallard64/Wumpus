@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.RegularExpressions;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -29,21 +28,31 @@ public class TriviaDisplay : MonoBehaviour
     /// <summary>Seconds the correct answer stays on screen before the next question loads.</summary>
     private const float AnswerRevealSeconds = 2.0f;
 
-    /// <summary>Length of the answer label prefix ("A:") stripped before comparing answers.</summary>
-    private const int AnswerLabelLength = 2;
+    /// <summary>Every question is multiple choice with exactly this many options.</summary>
+    public const int AnswerCount = 4;
 
-    /// <summary>Name of the on-disk cache of previously generated questions.</summary>
     private const string QuestionCacheFileName = "newdata.json";
 
-    /// <summary>Prompt asking the model for a labelled multiple-choice question.</summary>
     private const string QuestionPrompt =
-        "Generate a weird, truly unique trivia question with four multiple-choice answers. "
-        + "Clearly label four answers and the one correct answer. Use the format: "
-        + "Question: <question>\\nA: <answer1>\\nB: <answer2>\\nC: <answer3>\\nD: <answer4>\\nCorrect: <correctans>";
+        "Generate a weird, truly unique trivia question with exactly four multiple-choice answers. "
+        + "The four answers must all be different from each other, and correctIndex must be the "
+        + "zero-based position of the correct one.";
 
-    /// <summary>Regex capturing the question, four answers and the correct label from a response.</summary>
-    private const string QuestionPattern =
-        "\"content\":\\s*\"Question: (.*?)\\\\nA: (.*?)\\\\nB: (.*?)\\\\nC: (.*?)\\\\nD: (.*?)\\\\nCorrect: (.*?)\"";
+    /// <summary>Schema name sent to the API; must match <c>^[a-zA-Z0-9_-]+$</c>.</summary>
+    private const string QuestionSchemaName = "trivia_question";
+
+    /// <summary>
+    /// Shape the model must return. Field names line up with <see cref="QuestionData"/> so the
+    /// response deserializes straight into it, and <c>additionalProperties:false</c> plus the full
+    /// <c>required</c> list are what OpenAI's strict mode demands.
+    /// </summary>
+    private const string QuestionSchema =
+        "{\"type\":\"object\",\"properties\":{"
+        + "\"question\":{\"type\":\"string\"},"
+        + "\"answers\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
+        + "\"correctIndex\":{\"type\":\"integer\"}},"
+        + "\"required\":[\"question\",\"answers\",\"correctIndex\"],"
+        + "\"additionalProperties\":false}";
 
     private const string WumpusGreetingPrompt =
         "Imagine you are the wumpus and the player has came to hunt you. What do you say?";
@@ -63,83 +72,58 @@ public class TriviaDisplay : MonoBehaviour
     /// <summary>Appended to every dialogue prompt so responses do not arrive wrapped in quotes.</summary>
     private const string NoQuotesInstruction = "Don't include any quotes.";
 
-    /// <summary>Name of the scene holding the player, used to route results back to it.</summary>
     private const string MainSceneName = "MainScene";
 
     /// <summary>Name of the GameObject carrying <see cref="PlayerScript"/> in the main scene.</summary>
     private const string PlayerObjectName = "sprite";
 
-    /// <summary>A single multiple-choice question and its correct answer.</summary>
+    /// <summary>
+    /// A single multiple-choice question. Field names double as the API's JSON schema, so
+    /// renaming one means editing <see cref="QuestionSchema"/> to match.
+    /// </summary>
     [System.Serializable]
     public class QuestionData
     {
-        /// <summary>The question text.</summary>
         public string question;
+        public string[] answers;
 
-        /// <summary>Text of answer A.</summary>
-        public string answerA;
-
-        /// <summary>Text of answer B.</summary>
-        public string answerB;
-
-        /// <summary>Text of answer C.</summary>
-        public string answerC;
-
-        /// <summary>Text of answer D.</summary>
-        public string answerD;
-
-        /// <summary>The correct answer, as returned by the model.</summary>
-        public string correct;
+        /// <summary>Zero-based position of the correct entry in <see cref="answers"/>.</summary>
+        public int correctIndex;
     }
 
     /// <summary>Serialization wrapper for the on-disk question cache.</summary>
     [System.Serializable]
     public class QuestionFile
     {
-        /// <summary>Every question cached so far.</summary>
         public List<QuestionData> questions;
     }
 
-    /// <summary>Label showing the current question.</summary>
     public TextMeshProUGUI questionText;
 
     /// <summary>Label showing the correct answer once the player has picked.</summary>
     public TextMeshProUGUI answerText;
 
-    /// <summary>Label for answer A.</summary>
     [FormerlySerializedAs("t1")]
     public Text answerTextA;
 
-    /// <summary>Label for answer B.</summary>
     [FormerlySerializedAs("t2")]
     public Text answerTextB;
 
-    /// <summary>Label for answer C.</summary>
     [FormerlySerializedAs("t3")]
     public Text answerTextC;
 
-    /// <summary>Label for answer D.</summary>
     [FormerlySerializedAs("t4")]
     public Text answerTextD;
 
-    /// <summary>Readout for the current question number.</summary>
     [FormerlySerializedAs("qnum")]
     public TextMeshProUGUI questionNumberText;
 
-    /// <summary>Readout for the total number of questions in this round.</summary>
     [FormerlySerializedAs("qmax")]
     public TextMeshProUGUI questionTotalText;
 
-    /// <summary>Toggle for answer A.</summary>
     public Toggle toggle1;
-
-    /// <summary>Toggle for answer B.</summary>
     public Toggle toggle2;
-
-    /// <summary>Toggle for answer C.</summary>
     public Toggle toggle3;
-
-    /// <summary>Toggle for answer D.</summary>
     public Toggle toggle4;
 
     /// <summary>Name of this encounter scene, unloaded once the round resolves.</summary>
@@ -165,11 +149,9 @@ public class TriviaDisplay : MonoBehaviour
     [FormerlySerializedAs("questions")]
     public int totalQuestions;
 
-    /// <summary>Questions asked so far in this round.</summary>
     [FormerlySerializedAs("count")]
     public int questionsAsked = 0;
 
-    /// <summary>Questions answered correctly so far in this round.</summary>
     [FormerlySerializedAs("right")]
     public int correctAnswers = 0;
 
@@ -180,20 +162,22 @@ public class TriviaDisplay : MonoBehaviour
     [FormerlySerializedAs("usage")]
     public string challengeType;
 
-    /// <summary>The correct answer for the question currently on screen.</summary>
+    /// <summary>Text of the correct answer for the question currently on screen.</summary>
     [FormerlySerializedAs("correctans")]
     public string correctAnswer;
 
-    /// <summary>Random source used when drawing an offline fallback question.</summary>
+    /// <summary>Random source for drawing fallback questions and shuffling answer order.</summary>
     public System.Random rnd = new System.Random();
 
     private List<QuestionData> localQuestions = new List<QuestionData>();
     private string filePath;
 
-    /// <summary>
-    /// Loads the cached question bank, opens the Wumpus duel with a taunt if applicable,
-    /// wires up the answer toggles, and asks the first question.
-    /// </summary>
+    /// <summary>Which on-screen slot holds the correct answer, after shuffling.</summary>
+    private int correctSlot;
+
+    /// <summary>Guards against the round resolving more than once while the scene unloads.</summary>
+    private bool hasResolved;
+
     private void Start()
     {
         filePath = Path.Combine(Application.persistentDataPath, QuestionCacheFileName);
@@ -204,10 +188,10 @@ public class TriviaDisplay : MonoBehaviour
             StartCoroutine(SpeakAsWumpus(WumpusGreetingPrompt));
         }
 
-        toggle1.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, answerTextA));
-        toggle2.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, answerTextB));
-        toggle3.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, answerTextC));
-        toggle4.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, answerTextD));
+        toggle1.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, 0));
+        toggle2.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, 1));
+        toggle3.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, 2));
+        toggle4.onValueChanged.AddListener(isOn => OnAnswerToggled(isOn, 3));
 
         StartAnswer();
     }
@@ -217,11 +201,14 @@ public class TriviaDisplay : MonoBehaviour
 
     /// <summary>
     /// Advances the reveal timer and, once it expires, either resolves the round or moves on
-    /// to the next question. Also persists the question cache.
+    /// to the next question.
     /// </summary>
     private void Update()
     {
-        SaveCachedQuestions();
+        if (hasResolved)
+        {
+            return;
+        }
 
         if (isRevealingAnswer)
         {
@@ -264,8 +251,8 @@ public class TriviaDisplay : MonoBehaviour
     /// Grades the player's pick, shows the correct answer, and charges them a coin for the attempt.
     /// Ignored while a previous answer is still being revealed.
     /// </summary>
-    /// <param name="chosenAnswer">Full label of the answer the player selected, e.g. "B: 1854".</param>
-    public void RevealAnswer(string chosenAnswer)
+    /// <param name="chosenSlot">Zero-based on-screen slot the player selected.</param>
+    public void RevealAnswer(int chosenSlot)
     {
         if (isRevealingAnswer)
         {
@@ -275,7 +262,7 @@ public class TriviaDisplay : MonoBehaviour
         isRevealingAnswer = true;
         answerText.text = correctAnswer;
 
-        if (StripAnswerLabel(correctAnswer) == StripAnswerLabel(chosenAnswer))
+        if (chosenSlot == correctSlot)
         {
             if (IsWumpusDuel)
             {
@@ -301,22 +288,16 @@ public class TriviaDisplay : MonoBehaviour
     }
 
     /// <summary>
-    /// Extracts the assistant's message from a chat-completion response body.
-    /// </summary>
-    /// <param name="jsonResponse">Raw JSON body returned by the API.</param>
-    /// <returns>The cleaned message text, or <c>null</c> when no content field is present.</returns>
-    public static string ExtractMessage(string jsonResponse)
-    {
-        return OpenAIClient.ExtractMessageContent(jsonResponse);
-    }
-
-    /// <summary>
     /// Ends the round: narrates the outcome if this is the Wumpus duel, tells
     /// <see cref="PlayerScript"/> what happened, and unloads this scene.
     /// </summary>
     /// <param name="won">True when the player answered more than half the questions correctly.</param>
     private void ResolveRound(bool won)
     {
+        // Unloading a scene takes at least a frame, so without this the round would report its
+        // result once per frame until the scene actually went away, paying the reward each time.
+        hasResolved = true;
+
         if (IsWumpusDuel)
         {
             StartCoroutine(SpeakFinalLineAndResolve(won ? WumpusDefeatedPrompt : WumpusVictoryPrompt, won));
@@ -327,10 +308,6 @@ public class TriviaDisplay : MonoBehaviour
         UnloadEncounterScene();
     }
 
-    /// <summary>
-    /// Sends the round result to <see cref="PlayerScript"/> in the main scene.
-    /// </summary>
-    /// <param name="won">True when the player cleared the round.</param>
     private void NotifyPlayer(bool won)
     {
         GameObject playerObject = FindObjectInScene(MainSceneName, PlayerObjectName);
@@ -341,11 +318,10 @@ public class TriviaDisplay : MonoBehaviour
         }
     }
 
-    /// <summary>Unloads this encounter scene, returning control to the map.</summary>
     private void UnloadEncounterScene()
     {
         Scene scene = SceneManager.GetSceneByName(encounterSceneName);
-        if (scene != null)
+        if (scene.IsValid() && scene.isLoaded)
         {
             SceneManager.UnloadSceneAsync(scene);
         }
@@ -355,8 +331,6 @@ public class TriviaDisplay : MonoBehaviour
     /// Shows a generated line of Wumpus dialogue. Leaves the previous line in place when the
     /// API is unavailable.
     /// </summary>
-    /// <param name="prompt">Scenario handed to the model.</param>
-    /// <returns>A coroutine to be driven with <c>StartCoroutine</c>.</returns>
     private IEnumerator SpeakAsWumpus(string prompt)
     {
         return OpenAIClient.SendChatCompletion(
@@ -376,9 +350,6 @@ public class TriviaDisplay : MonoBehaviour
     /// Speaks the Wumpus's closing line, then reports the result and unloads the scene.
     /// The result is reported whether or not the dialogue call succeeds.
     /// </summary>
-    /// <param name="prompt">Scenario handed to the model.</param>
-    /// <param name="won">True when the player cleared the round.</param>
-    /// <returns>A coroutine to be driven with <c>StartCoroutine</c>.</returns>
     private IEnumerator SpeakFinalLineAndResolve(string prompt, bool won)
     {
         yield return SpeakAsWumpus(prompt);
@@ -388,27 +359,26 @@ public class TriviaDisplay : MonoBehaviour
     }
 
     /// <summary>
-    /// Requests a fresh multiple-choice question and puts it on screen, falling back to the
-    /// cached question bank when the call or the parse fails.
+    /// Requests a fresh multiple-choice question as schema-constrained JSON, falling back to the
+    /// cached question bank when every attempt fails.
     /// </summary>
-    /// <returns>A coroutine to be driven with <c>StartCoroutine</c>.</returns>
     private IEnumerator RequestQuestion()
     {
-        return OpenAIClient.SendChatCompletion(
+        return OpenAIClient.SendStructuredCompletion(
             QuestionPrompt,
             OpenAIClient.QuestionResponseTokens,
-            DisplayQuestionFromResponse,
+            QuestionSchemaName,
+            QuestionSchema,
+            content => ParseQuestion(content) != null,
+            DisplayQuestionFromContent,
             _ => UseFallbackQuestion());
     }
 
-    /// <summary>
-    /// Parses a chat-completion response into a question and shows it, or falls back to the
-    /// cached bank if any field is missing.
-    /// </summary>
-    /// <param name="response">Raw JSON body returned by the API.</param>
-    private void DisplayQuestionFromResponse(string response)
+    /// <summary>Shows a validated question and adds it to the offline bank.</summary>
+    /// <param name="content">The assistant's JSON content, already checked by the validator.</param>
+    private void DisplayQuestionFromContent(string content)
     {
-        QuestionData parsed = ParseQuestion(response);
+        QuestionData parsed = ParseQuestion(content);
         if (parsed == null)
         {
             UseFallbackQuestion();
@@ -416,56 +386,111 @@ public class TriviaDisplay : MonoBehaviour
         }
 
         localQuestions.Add(parsed);
+        SaveCachedQuestions();
         ShowQuestion(parsed);
     }
 
     /// <summary>
-    /// Pulls the question, four answers and correct label out of a chat-completion response.
+    /// Deserializes a question and checks it is actually usable. The schema guarantees the fields
+    /// exist, but not that there are four distinct answers or that the index points at one of them,
+    /// so those are checked here and a failure sends the caller back for another attempt.
     /// </summary>
-    /// <param name="jsonResponse">Raw JSON body returned by the API.</param>
-    /// <returns>The parsed question, or <c>null</c> when the response did not match the format.</returns>
-    private static QuestionData ParseQuestion(string jsonResponse)
+    /// <param name="content">The assistant's JSON content.</param>
+    /// <returns>The parsed question, or <c>null</c> when it cannot be trusted.</returns>
+    public static QuestionData ParseQuestion(string content)
     {
-        Match match = Regex.Match(jsonResponse, QuestionPattern);
-        if (!match.Success)
+        if (string.IsNullOrWhiteSpace(content))
         {
             return null;
         }
 
-        QuestionData parsed = new QuestionData
+        QuestionData parsed;
+        try
         {
-            question = OpenAIClient.CleanText(match.Groups[1].Value),
-            answerA = OpenAIClient.CleanText(match.Groups[2].Value),
-            answerB = OpenAIClient.CleanText(match.Groups[3].Value),
-            answerC = OpenAIClient.CleanText(match.Groups[4].Value),
-            answerD = OpenAIClient.CleanText(match.Groups[5].Value),
-            correct = OpenAIClient.CleanText(match.Groups[6].Value)
-        };
+            parsed = JsonUtility.FromJson<QuestionData>(content);
+        }
+        catch (System.Exception)
+        {
+            return null;
+        }
 
-        bool isComplete = !string.IsNullOrEmpty(parsed.question)
-            && !string.IsNullOrEmpty(parsed.answerA)
-            && !string.IsNullOrEmpty(parsed.answerB)
-            && !string.IsNullOrEmpty(parsed.answerC)
-            && !string.IsNullOrEmpty(parsed.answerD)
-            && !string.IsNullOrEmpty(parsed.correct);
+        if (parsed == null || string.IsNullOrWhiteSpace(parsed.question))
+        {
+            return null;
+        }
 
-        return isComplete ? parsed : null;
+        if (parsed.answers == null || parsed.answers.Length != AnswerCount)
+        {
+            return null;
+        }
+
+        if (parsed.correctIndex < 0 || parsed.correctIndex >= AnswerCount)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < parsed.answers.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(parsed.answers[i]))
+            {
+                return null;
+            }
+
+            for (int j = i + 1; j < parsed.answers.Length; j++)
+            {
+                if (string.Equals(parsed.answers[i], parsed.answers[j], System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+            }
+        }
+
+        return parsed;
     }
 
-    /// <summary>Puts a question and its four answers on screen.</summary>
-    /// <param name="data">The question to display.</param>
+    /// <summary>
+    /// Puts a question on screen with its answers in a random order, so the correct one is not
+    /// always in the position the model happened to put it in.
+    /// </summary>
     private void ShowQuestion(QuestionData data)
     {
         questionNumberText.text = questionsAsked.ToString();
         questionTotalText.text = totalQuestions.ToString();
         questionText.text = data.question;
 
-        answerTextA.text = "A: " + data.answerA;
-        answerTextB.text = "B: " + data.answerB;
-        answerTextC.text = "C: " + data.answerC;
-        answerTextD.text = "D: " + data.answerD;
+        int[] slots = ShuffledSlots();
+        Text[] labels = { answerTextA, answerTextB, answerTextC, answerTextD };
+        string[] prefixes = { "A: ", "B: ", "C: ", "D: " };
 
-        correctAnswer = data.correct;
+        for (int slot = 0; slot < AnswerCount; slot++)
+        {
+            int sourceIndex = slots[slot];
+            labels[slot].text = prefixes[slot] + data.answers[sourceIndex];
+
+            if (sourceIndex == data.correctIndex)
+            {
+                correctSlot = slot;
+                correctAnswer = prefixes[slot] + data.answers[sourceIndex];
+            }
+        }
+    }
+
+    /// <summary>Fisher-Yates permutation of the four answer positions.</summary>
+    private int[] ShuffledSlots()
+    {
+        int[] slots = new int[AnswerCount];
+        for (int i = 0; i < AnswerCount; i++)
+        {
+            slots[i] = i;
+        }
+
+        for (int i = AnswerCount - 1; i > 0; i--)
+        {
+            int j = rnd.Next(i + 1);
+            (slots[i], slots[j]) = (slots[j], slots[i]);
+        }
+
+        return slots;
     }
 
     /// <summary>
@@ -483,21 +508,16 @@ public class TriviaDisplay : MonoBehaviour
     }
 
     /// <summary>Last-resort question used when no question has ever been cached.</summary>
-    /// <returns>A hardcoded placeholder question.</returns>
     private static QuestionData PlaceholderQuestion()
     {
         return new QuestionData
         {
             question = "skibidi toilet",
-            answerA = "rizzler",
-            answerB = "ew no",
-            answerC = "GET OUT",
-            answerD = "D",
-            correct = "rizzler"
+            answers = new[] { "rizzler", "ew no", "GET OUT", "D" },
+            correctIndex = 0
         };
     }
 
-    /// <summary>Unchecks all four answer toggles.</summary>
     private void ClearAnswerSelection()
     {
         toggle1.isOn = false;
@@ -506,40 +526,65 @@ public class TriviaDisplay : MonoBehaviour
         toggle4.isOn = false;
     }
 
-    /// <summary>Grades the matching answer when one of the four toggles is switched on.</summary>
-    /// <param name="isOn">Whether the toggle was switched on rather than off.</param>
-    /// <param name="answerLabel">Label holding the answer text tied to that toggle.</param>
-    private void OnAnswerToggled(bool isOn, Text answerLabel)
+    /// <summary>Grades the matching slot when one of the four toggles is switched on.</summary>
+    private void OnAnswerToggled(bool isOn, int slot)
     {
         if (isOn)
         {
-            RevealAnswer(answerLabel.text);
+            RevealAnswer(slot);
         }
     }
 
-    /// <summary>Drops the leading "A:" style prefix so two answers can be compared on text alone.</summary>
-    /// <param name="answer">A full answer label.</param>
-    /// <returns>The answer text without its letter prefix.</returns>
-    private static string StripAnswerLabel(string answer)
-    {
-        return answer.Substring(AnswerLabelLength, answer.Length - AnswerLabelLength);
-    }
-
-    /// <summary>Reads the cached question bank from disk, if one has been written.</summary>
+    /// <summary>
+    /// Reads the cached question bank from disk, dropping any entry that no longer passes
+    /// validation so a stale or hand-edited cache cannot put a broken question on screen.
+    /// </summary>
     private void LoadCachedQuestions()
     {
+        localQuestions = new List<QuestionData>();
+
         if (!File.Exists(filePath))
         {
-            Debug.LogWarning("No questions file found.");
             return;
         }
 
-        string json = File.ReadAllText(filePath);
-        QuestionFile data = JsonUtility.FromJson<QuestionFile>(json);
-        localQuestions = data.questions ?? new List<QuestionData>();
+        QuestionFile data;
+        try
+        {
+            data = JsonUtility.FromJson<QuestionFile>(File.ReadAllText(filePath));
+        }
+        catch (System.Exception error)
+        {
+            Debug.LogWarning($"Could not read the question cache: {error.Message}");
+            return;
+        }
+
+        if (data?.questions == null)
+        {
+            return;
+        }
+
+        foreach (QuestionData question in data.questions)
+        {
+            if (IsUsable(question))
+            {
+                localQuestions.Add(question);
+            }
+        }
     }
 
-    /// <summary>Writes the cached question bank back to disk.</summary>
+    /// <summary>The same checks <see cref="ParseQuestion"/> applies, for an already-deserialized question.</summary>
+    private static bool IsUsable(QuestionData question)
+    {
+        return question != null
+            && !string.IsNullOrWhiteSpace(question.question)
+            && question.answers != null
+            && question.answers.Length == AnswerCount
+            && question.correctIndex >= 0
+            && question.correctIndex < AnswerCount;
+    }
+
+    /// <summary>Writes the question bank to disk. Called when the bank actually changes.</summary>
     private void SaveCachedQuestions()
     {
         QuestionFile data = new QuestionFile { questions = localQuestions };
@@ -549,8 +594,6 @@ public class TriviaDisplay : MonoBehaviour
     /// <summary>
     /// Finds a root GameObject by name inside a loaded scene.
     /// </summary>
-    /// <param name="sceneName">Scene to search.</param>
-    /// <param name="objectName">Name of the root GameObject to find.</param>
     /// <returns>The GameObject, or <c>null</c> when the scene is not loaded or has no such object.</returns>
     private GameObject FindObjectInScene(string sceneName, string objectName)
     {

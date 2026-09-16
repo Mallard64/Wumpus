@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -12,10 +12,8 @@ public class TextCrawl : MonoBehaviour
     /// <summary>Anchored Y position at which the crawl is considered finished.</summary>
     private const float CrawlEndY = 2000f;
 
-    /// <summary>Scene loaded once the crawl completes.</summary>
     private const string MainSceneName = "MainScene";
 
-    /// <summary>The lore shown during the crawl.</summary>
     private const string BackstoryText =
         "Long ago, in a hidden world beneath the earth's surface, there existed an advanced civilization. "
         + "These people were masters of both technology and magic, living in harmony with the cavernous depths "
@@ -33,17 +31,13 @@ public class TextCrawl : MonoBehaviour
     /// <summary>Scroll speed in anchored units per second.</summary>
     public float scrollSpeed = 50000f;
 
-    /// <summary>Label carrying the crawl text.</summary>
     public Text textComponent;
 
     /// <summary>Transform moved upwards each frame to produce the scroll.</summary>
     public RectTransform textRectTransform;
 
-    /// <summary>Resolves any unassigned references, parks the text off-screen and starts the crawl.</summary>
     private void Start()
     {
-        textComponent.text = "";
-
         if (textComponent == null)
         {
             textComponent = GetComponent<Text>();
@@ -54,11 +48,12 @@ public class TextCrawl : MonoBehaviour
             textRectTransform = textComponent.GetComponent<RectTransform>();
         }
 
+        textComponent.text = "";
+
         textRectTransform.anchoredPosition = new Vector2(0, -Screen.height);
         StartCoroutine(ShowBackstory());
     }
 
-    /// <summary>Scrolls the text up and loads the main scene once it has left the screen.</summary>
     private void Update()
     {
         if (textComponent.text == "")
@@ -78,7 +73,6 @@ public class TextCrawl : MonoBehaviour
     /// Puts the backstory on screen. Kept as a coroutine so it can be swapped back to a live
     /// generated intro without changing the call site.
     /// </summary>
-    /// <returns>A coroutine to be driven with <c>StartCoroutine</c>.</returns>
     private IEnumerator ShowBackstory()
     {
         textComponent.text = BackstoryText;

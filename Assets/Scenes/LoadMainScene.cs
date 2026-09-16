@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -7,13 +7,10 @@ using UnityEngine.UI;
 /// </summary>
 public class LoadMainScene : MonoBehaviour
 {
-    /// <summary>Scene loaded when the button is pressed.</summary>
     private const string MainSceneName = "MainScene";
 
-    /// <summary>The replay button. Assign this in the inspector.</summary>
     public Button yourButton;
 
-    /// <summary>Subscribes to the replay button, if one has been assigned.</summary>
     private void Start()
     {
         if (yourButton != null)
@@ -22,7 +19,6 @@ public class LoadMainScene : MonoBehaviour
         }
     }
 
-    /// <summary>Restarts the game by loading the main scene.</summary>
     private void OnButtonPress()
     {
         SceneManager.LoadScene(MainSceneName);

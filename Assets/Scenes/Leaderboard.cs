@@ -9,16 +9,13 @@ using System.Collections.Generic;
 /// </summary>
 public class Leaderboard : MonoBehaviour
 {
-    /// <summary>Vertical gap between consecutive leaderboard rows.</summary>
     private const int RowSpacing = 50;
 
     /// <summary>Vertical offset applied to every row so the list clears the page heading.</summary>
     private const float HeaderOffset = 100f;
 
-    /// <summary>Position the first leaderboard row is instantiated at.</summary>
     public Vector3 leaderboardContainer = new Vector3(0, -50, 0);
 
-    /// <summary>Prefab holding the seven labels that make up one leaderboard row.</summary>
     public GameObject leaderboardEntryPrefab;
 
     /// <summary>Accumulated vertical offset for the row currently being laid out.</summary>
@@ -26,7 +23,6 @@ public class Leaderboard : MonoBehaviour
 
     private string filePath;
 
-    /// <summary>Resolves the save path and draws the leaderboard.</summary>
     private void Start()
     {
         filePath = Path.Combine(Application.persistentDataPath, GameData.SaveFileName);
@@ -57,7 +53,6 @@ public class Leaderboard : MonoBehaviour
     /// <summary>
     /// Instantiates one leaderboard row, fills in its seven labels and slides it into position.
     /// </summary>
-    /// <param name="player">The run to display.</param>
     private void SpawnEntry(PlayerData player)
     {
         GameObject entry = Instantiate(leaderboardEntryPrefab, leaderboardContainer, Quaternion.identity);

@@ -1,0 +1,6 @@
+# Known false positive.
+# A dummy token hardcoded in Unity's vendored com.unity.collab-proxy package
+# test fixture. Not our credential; ships inside the Unity Package Manager cache.
+# Only present on the legacy `main` branch, which committed Library/ before it
+# was gitignored.
+c39f62e4eccd6d07e0e431cfc6cdf9f9a9adba2d:Library/PackageCache/com.unity.collab-proxy@1.14.13/Tests/Editor/PlasticSCM/ProjectDownloader/CommandLineArgumentsTests.cs:generic-api-key:196

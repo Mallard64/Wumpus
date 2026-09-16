@@ -14,6 +14,11 @@ obj/
 CaseSensitiveTest
 iOS/
 
+# Player builds (WebGL output lands in build/WebGL/)
+build/
+Build/
+test-results/
+
 
 # Local OpenAI API key (never commit the real one)
 Assets/Resources/openai_api_key.txt

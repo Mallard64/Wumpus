@@ -11,24 +11,20 @@ using UnityEngine.Serialization;
 /// wraps around the edges, so the cave is topologically a torus and the player can never
 /// walk into a dead end at the boundary.
 /// </para>
+/// <para>
+/// Rooms are numbered by <see cref="Cell.GetCellIndex"/> everywhere, including hazard placement
+/// and Wumpus relocation, so every room number the player sees refers to the room it is printed on.
+/// </para>
 /// </summary>
 public class CellGenerator : MonoBehaviour
 {
-    /// <summary>Number of columns in the hex grid.</summary>
     public const int GridWidth = 6;
-
-    /// <summary>Number of rows in the hex grid.</summary>
     public const int GridHeight = 5;
-
-    /// <summary>Total number of rooms in the cave.</summary>
     public const int TotalRooms = GridWidth * GridHeight;
 
-    /// <summary>
-    /// Lowest room number that may hold a hazard. Room 1 is the player's spawn and is always safe.
-    /// </summary>
+    /// <summary>Room 1 is the player's spawn and is always kept free of hazards.</summary>
     private const int FirstHazardRoomNumber = 2;
 
-    /// <summary>Number of rooms eligible to hold a hazard, i.e. every room except the spawn.</summary>
     private const int HazardEligibleRoomCount = TotalRooms - 1;
 
     /// <summary>
@@ -52,7 +48,6 @@ public class CellGenerator : MonoBehaviour
     /// <summary>Vertical nudge applied to odd columns to produce the staggered hex layout.</summary>
     private const float OddColumnYOffset = -0.15f;
 
-    /// <summary>Prefab instantiated once per room.</summary>
     public GameObject hexPrefab;
 
     /// <summary>Prefab reserved for tunnel decoration between rooms.</summary>
@@ -71,14 +66,9 @@ public class CellGenerator : MonoBehaviour
     /// <summary>World-space position of each room, indexed as <c>[column, row]</c>.</summary>
     public Vector2[,] allPositions = new Vector2[GridWidth, GridHeight];
 
-    /// <summary>Name of the encounter scene associated with each room, indexed as <c>[column, row]</c>.</summary>
-    public string[,] locToCave = new string[GridWidth, GridHeight];
-
-    /// <summary>Room number (1-based) currently occupied by the Wumpus.</summary>
     [FormerlySerializedAs("wumpusnum")]
     public int wumpusRoomNumber = 0;
 
-    /// <summary>The cell currently holding the Wumpus.</summary>
     public Cell wumpus;
 
     /// <summary>Cells currently holding bats. Rebuilt on every call to <see cref="SetHazards"/>.</summary>
@@ -87,44 +77,35 @@ public class CellGenerator : MonoBehaviour
     /// <summary>Cells currently holding pits. Rebuilt on every call to <see cref="SetHazards"/>.</summary>
     public List<Cell> pits = new List<Cell>();
 
-    /// <summary>Room number of the first bat colony.</summary>
     [FormerlySerializedAs("bat1")]
     public int batRoom1 = 0;
 
-    /// <summary>Room number of the second bat colony.</summary>
     [FormerlySerializedAs("bat2")]
     public int batRoom2 = 0;
 
-    /// <summary>Room number of the first pit.</summary>
     [FormerlySerializedAs("cave1")]
     public int pitRoom1 = 0;
 
-    /// <summary>Room number of the second pit.</summary>
     [FormerlySerializedAs("cave2")]
     public int pitRoom2 = 0;
 
-    /// <summary>Sprite for a room with a tunnel leading up and to the right.</summary>
     [FormerlySerializedAs("upright")]
     public Sprite upRightSprite;
 
-    /// <summary>Sprite for a room with a tunnel leading up and to the left.</summary>
     [FormerlySerializedAs("upleft")]
     public Sprite upLeftSprite;
 
-    /// <summary>Sprite for a room with a tunnel leading down and to the left.</summary>
     [FormerlySerializedAs("downleft")]
     public Sprite downLeftSprite;
 
-    /// <summary>Sprite for a room with a tunnel leading down and to the right.</summary>
     [FormerlySerializedAs("downright")]
     public Sprite downRightSprite;
 
     private System.Random rnd = new System.Random();
 
-    /// <summary>Places the Wumpus at a random room and builds the cave.</summary>
     private void Start()
     {
-        wumpusRoomNumber = new System.Random().Next(TotalRooms) + 1;
+        wumpusRoomNumber = rnd.Next(TotalRooms) + 1;
         GenerateGrid();
     }
 
@@ -136,38 +117,58 @@ public class CellGenerator : MonoBehaviour
         SetAllCellsActive(false);
     }
 
-    /// <summary>Shows every room again after an encounter scene is unloaded.</summary>
     public void makeAppear()
     {
         SetAllCellsActive(true);
     }
 
     /// <summary>
-    /// Teleports the Wumpus to a freshly drawn random room number.
+    /// Teleports the Wumpus to a freshly drawn random room.
     /// Called after the player survives a Wumpus encounter.
     /// </summary>
-    /// <remarks>
-    /// NOTE: the room counter in the search loop below is never advanced, so the Wumpus only
-    /// relocates when the new room number happens to be 1. This mirrors the original behaviour
-    /// exactly and is left unchanged on purpose; see the README's "Known issues" section.
-    /// </remarks>
     public void moveWumpus()
     {
-        wumpus.hasWumpus = false;
-        wumpusRoomNumber = new System.Random().Next(TotalRooms) + 1;
+        PlaceWumpusAt(rnd.Next(TotalRooms) + 1);
+    }
 
-        int roomNumber = 1;
-        for (int column = 0; column < GridWidth; column++)
+    /// <summary>
+    /// Moves the Wumpus to a specific room, clearing it out of the room it currently occupies.
+    /// Split out from <see cref="moveWumpus"/> so relocation can be exercised without randomness.
+    /// </summary>
+    /// <param name="roomNumber">One-based target room, as numbered by <see cref="Cell.GetCellIndex"/>.</param>
+    public void PlaceWumpusAt(int roomNumber)
+    {
+        Cell destination = CellAtRoomNumber(roomNumber);
+        if (destination == null)
         {
-            for (int row = 0; row < GridHeight; row++)
-            {
-                if (roomNumber == wumpusRoomNumber)
-                {
-                    cells[column, row].hasWumpus = true;
-                    wumpus = cells[column, row];
-                }
-            }
+            return;
         }
+
+        if (wumpus != null)
+        {
+            wumpus.hasWumpus = false;
+        }
+
+        destination.hasWumpus = true;
+        wumpus = destination;
+        wumpusRoomNumber = roomNumber;
+    }
+
+    /// <summary>
+    /// Resolves a room number straight to its cell. Room numbering is row-major, so the column
+    /// and row fall out of a divide and a remainder rather than a scan of the grid.
+    /// </summary>
+    /// <param name="roomNumber">One-based room number.</param>
+    /// <returns>The matching cell, or <c>null</c> when the number is out of range.</returns>
+    public Cell CellAtRoomNumber(int roomNumber)
+    {
+        if (roomNumber < 1 || roomNumber > TotalRooms)
+        {
+            return null;
+        }
+
+        int zeroBased = roomNumber - 1;
+        return cells[zeroBased % GridWidth, zeroBased / GridWidth];
     }
 
     /// <summary>
@@ -178,11 +179,12 @@ public class CellGenerator : MonoBehaviour
     {
         wumpus.hasWumpus = false;
 
-        string direction = Direction.All[new System.Random().Next(Direction.All.Length)];
+        string direction = Direction.All[rnd.Next(Direction.All.Length)];
         Cell destination = wumpus.next[direction];
 
         destination.hasWumpus = true;
         wumpus = destination;
+        wumpusRoomNumber = destination.GetCellIndex();
     }
 
     /// <summary>
@@ -196,7 +198,6 @@ public class CellGenerator : MonoBehaviour
         ApplyHazardsToCells();
     }
 
-    /// <summary>Toggles visibility of every room in the grid.</summary>
     private void SetAllCellsActive(bool isActive)
     {
         for (int column = 0; column < GridWidth; column++)
@@ -231,12 +232,12 @@ public class CellGenerator : MonoBehaviour
             for (int row = 0; row < GridHeight; row++)
             {
                 Cell cell = cells[column, row];
-                cell.next.Add(Direction.UpRight, DiagonalNeighbor(column, row, Direction.UpRight));
-                cell.next.Add(Direction.DownRight, DiagonalNeighbor(column, row, Direction.DownRight));
-                cell.next.Add(Direction.UpLeft, DiagonalNeighbor(column, row, Direction.UpLeft));
-                cell.next.Add(Direction.DownLeft, DiagonalNeighbor(column, row, Direction.DownLeft));
-                cell.next.Add(Direction.Up, CellAbove(column, row));
-                cell.next.Add(Direction.Down, CellBelow(column, row));
+                cell.next[Direction.UpRight] = DiagonalNeighbor(column, row, Direction.UpRight);
+                cell.next[Direction.DownRight] = DiagonalNeighbor(column, row, Direction.DownRight);
+                cell.next[Direction.UpLeft] = DiagonalNeighbor(column, row, Direction.UpLeft);
+                cell.next[Direction.DownLeft] = DiagonalNeighbor(column, row, Direction.DownLeft);
+                cell.next[Direction.Up] = CellAbove(column, row);
+                cell.next[Direction.Down] = CellBelow(column, row);
             }
         }
 
@@ -265,10 +266,10 @@ public class CellGenerator : MonoBehaviour
     /// <returns>True when a tunnel was carved; false when the caller should retry.</returns>
     private bool TryCarveTunnelFromColumn(int column)
     {
-        int row = new System.Random().Next(GridHeight);
+        int row = rnd.Next(GridHeight);
         while (cells[column, row].numConnections >= MaxConnectionsPerCell)
         {
-            row = new System.Random().Next(GridHeight);
+            row = rnd.Next(GridHeight);
         }
 
         Cell source = cells[column, row];
@@ -276,7 +277,7 @@ public class CellGenerator : MonoBehaviour
         Cell downRightTarget = DiagonalNeighbor(column, row, Direction.DownRight);
 
         // Prefer the up-right neighbour on a coin flip, and fall back to the down-right one.
-        if (new System.Random().Next(2) == 0 && HasCapacity(upRightTarget))
+        if (rnd.Next(2) == 0 && HasCapacity(upRightTarget))
         {
             ConnectRooms(source, upRightTarget, Direction.UpRight, Direction.DownLeft, upRightSprite, downLeftSprite);
             return true;
@@ -291,7 +292,6 @@ public class CellGenerator : MonoBehaviour
         return false;
     }
 
-    /// <summary>Whether a room can still accept another tunnel.</summary>
     private static bool HasCapacity(Cell cell)
     {
         return cell.numConnections < MaxConnectionsPerCell;
@@ -364,12 +364,11 @@ public class CellGenerator : MonoBehaviour
     }
 
     /// <summary>
-    /// Instantiates every room, records its world position and encounter-scene name, then wires up
-    /// adjacency, scatters hazards and drops the player into room 1.
+    /// Instantiates every room, records its world position, then wires up adjacency,
+    /// scatters hazards and drops the player into room 1.
     /// </summary>
     private void GenerateGrid()
     {
-        int roomNumber = 1;
         for (int column = 0; column < GridWidth; column++)
         {
             for (int row = 0; row < GridHeight; row++)
@@ -384,8 +383,6 @@ public class CellGenerator : MonoBehaviour
                 }
 
                 allPositions[column, row] = position;
-                locToCave[column, row] = $"Cave_{roomNumber:00}";
-                roomNumber++;
             }
         }
 
@@ -428,13 +425,12 @@ public class CellGenerator : MonoBehaviour
 
         foreach (string direction in Direction.All)
         {
-            cell.neighbors.Add(direction, cell);
+            cell.neighbors[direction] = cell;
         }
 
         return cell;
     }
 
-    /// <summary>Removes the pit and bat flags placed by the previous call to <see cref="SetHazards"/>.</summary>
     private void ClearExistingHazards()
     {
         ForEachRoom((cell, roomNumber) =>
@@ -479,13 +475,11 @@ public class CellGenerator : MonoBehaviour
         }
     }
 
-    /// <summary>Draws a random room number eligible to hold a hazard.</summary>
     private int DrawHazardRoomNumber()
     {
         return rnd.Next(HazardEligibleRoomCount) + FirstHazardRoomNumber;
     }
 
-    /// <summary>Marks the chosen rooms as hazardous and rebuilds the pit and bat lists.</summary>
     private void ApplyHazardsToCells()
     {
         ForEachRoom((cell, roomNumber) =>
@@ -504,21 +498,17 @@ public class CellGenerator : MonoBehaviour
     }
 
     /// <summary>
-    /// Walks the grid in generation order, handing each cell its hazard-numbering index.
+    /// Walks the grid, handing each cell its room number as the player sees it. Using
+    /// <see cref="Cell.GetCellIndex"/> here is what keeps hazard placement and hint text agreeing.
     /// </summary>
-    /// <remarks>
-    /// This numbering is column-major and therefore differs from <see cref="Cell.GetCellIndex"/>,
-    /// which is row-major. Preserved as-is to keep hazard placement identical to the original.
-    /// </remarks>
     private void ForEachRoom(Action<Cell, int> action)
     {
-        int roomNumber = 1;
         for (int column = 0; column < GridWidth; column++)
         {
             for (int row = 0; row < GridHeight; row++)
             {
-                action(cells[column, row], roomNumber);
-                roomNumber++;
+                Cell cell = cells[column, row];
+                action(cell, cell.GetCellIndex());
             }
         }
     }
