@@ -8,14 +8,6 @@ You're dropped into a 30-room hex cave holding a Wumpus, two pits and two coloni
 can't see any of it — you only sense what's in the rooms next to you ("I smell a wumpus!", "I feel a
 breeze..."). From those clues you work out where the Wumpus is and shoot it before it finds you.
 
-## Play it
-
-**[mallard64.github.io/Wumpus](https://mallard64.github.io/Wumpus/)** — runs in the browser, nothing
-to install.
-
-> The link goes live after the first successful run of the WebGL workflow. See
-> [Deploying](#deploying) for the one-time setup.
-
 ## Screenshots
 
 | | |
@@ -95,21 +87,6 @@ cp "Assets/Resources/openai_api_key.txt.example" "Assets/Resources/openai_api_ke
 ```bash
 Unity -runTests -batchmode -projectPath . -testPlatform EditMode -testResults results.xml
 ```
-
-## Deploying
-
-`.github/workflows/webgl.yml` runs the tests, builds WebGL and publishes to GitHub Pages on every
-push to `master`. Pull requests run `.github/workflows/tests.yml` instead, which runs the EditMode
-tests on their own so a PR isn't waiting on a full WebGL build. Two one-time setup steps:
-
-1. **Settings → Pages → Source: GitHub Actions.**
-2. Add these repository secrets (Settings → Secrets and variables → Actions):
-
-   | Secret | What it is |
-   |---|---|
-   | `UNITY_LICENSE` | Contents of your `.ulf` license file — see [game-ci activation](https://game.ci/docs/github/activation) |
-   | `UNITY_EMAIL` | The email on your Unity account |
-   | `UNITY_PASSWORD` | That account's password |
 
 ## Team & my role
 
