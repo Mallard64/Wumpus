@@ -99,7 +99,8 @@ Unity -runTests -batchmode -projectPath . -testPlatform EditMode -testResults re
 ## Deploying
 
 `.github/workflows/webgl.yml` runs the tests, builds WebGL and publishes to GitHub Pages on every
-push to `master`. Two one-time setup steps:
+push to `master`. Pull requests run `.github/workflows/tests.yml` instead, which runs the EditMode
+tests on their own so a PR isn't waiting on a full WebGL build. Two one-time setup steps:
 
 1. **Settings → Pages → Source: GitHub Actions.**
 2. Add these repository secrets (Settings → Secrets and variables → Actions):
@@ -112,14 +113,22 @@ push to `master`. Two one-time setup steps:
 
 ## Team & my role
 
-<!-- TODO (Felix): fill this in before sharing the repo.
-     This was a team project — the git history has commits from another contributor (zigoola).
-     Say plainly which parts you wrote and which were someone else's, for example:
-       - What I built: ...
-       - What my teammate built: ...
-     Recruiters read this section closely, and being specific reads better than being vague. -->
+This was a two-person student project. I wrote the gameplay and AI layer — hex cave generation and
+room numbering (`CellGenerator`, `Cell`), player movement and arrow rules (`PlayerScript`), the
+trivia encounter and its OpenAI integration (`TriviaDisplay`, `OpenAIClient`), and scoring and
+persistence (`GameData`, `Leaderboard`) — plus the four cave scenes and the UI art pass.
 
-**TODO:** describe who built what.
+[zigoola](https://github.com/zigoola) did the iOS port — build target, app icons, splash screen,
+landscape orientation and signing — along with touch controls for shooting, the developer test-mode
+shortcuts, several Unity scene layout fixes, a Unity version upgrade, and a cleanup pass that
+removed four dead scripts.
+
+Since June 2024 I've maintained it alone: removing the hardcoded API keys, rewriting the OpenAI
+client to validate responses and fall back to an offline question bank, and adding the EditMode test
+suite and the WebGL CI pipeline.
+
+Commit counts are 14 from zigoola and 9 from me, which undersells neither of us: his are small and
+targeted, mine include the initial project import and the later refactors.
 
 ## Limits
 

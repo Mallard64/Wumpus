@@ -3,13 +3,18 @@ name: WebGL
 on:
   push:
     branches: [master]
-  pull_request:
-    branches: [master]
   workflow_dispatch:
 
+# Least privilege: jobs widen this only where they need to.
+permissions:
+  contents: read
+
+# Pages allows one deployment at a time, and an in-flight publish must not be
+# cancelled part-way through, so this uses the group GitHub documents for Pages
+# workflows rather than a cancel-on-new-push group.
 concurrency:
-  group: webgl-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 env:
   UNITY_VERSION: 2022.3.32f1
@@ -18,10 +23,13 @@ jobs:
   test:
     name: EditMode tests
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      checks: write # unity-test-runner reports results as a check run
+
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Cache Library
         uses: actions/cache@v4
@@ -55,10 +63,12 @@ jobs:
     name: Build WebGL
     needs: test
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Free up disk space
         run: |
@@ -89,9 +99,11 @@ jobs:
           name: webgl-build
           path: build/WebGL/WebGL
 
-      # Pages needs a tarball of exactly the folder that holds index.html.
+      # unity-builder writes to <buildsPath>/<targetPlatform>/<buildName>, so
+      # build/WebGL/WebGL is the folder that actually holds index.html — which is
+      # what Pages needs tarballed.
       - name: Upload Pages artifact
-        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/master'
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/WebGL/WebGL
@@ -99,7 +111,7 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
-    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
 
     permissions:
